@@ -118,6 +118,8 @@ Derived from *A Philosophy of Software Design* (Ousterhout).
 ## Tooling and Workflow
 
  - Always use git. Commit often, even for small changes.
+    - Do not work on main directly. Always make a new branch when working on a feature, even a small feature. When you are done with that branch, halt and defer to me to merge. I will review your changes and merge appropriately.
+       - If you want to still merge code and make branches and stuff (I'd advise not getting too complicated with git unless it is necessary), make a "master-branch" (please do not call it this, this is just impromptu terminology; give it appropriate and descriptive names) and then make another branch from this branch. You are allowed to merge these grandchild branches into the master branch.
     - Do not cite yourself or attribute credit to anyone in your commit message, just write what changes you made and why.
     - Do not commit without running tests.
     - Make sure to use .gitignore as needed.
