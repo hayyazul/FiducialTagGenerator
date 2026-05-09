@@ -1,6 +1,8 @@
+import { listFamilyNames } from "./families";
+import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { planSmallTagLayout } from "./layout/plan";
 import type { LayoutOptions, Paper, TagSpec } from "./layout/types";
-import { renderPlanToSvg } from "./preview/svg";
+import { type BitsProvider, renderPlanToSvg } from "./preview/svg";
 
 // Crude preview UI for Part 1. No PDF download yet; that arrives with Part 2.
 
@@ -21,6 +23,14 @@ interface FormState {
   cutMargin_mm: number;
   interTagGap_mm: number;
 }
+
+const loadedFamilies = new Map<string, FamilyBitmaps>();
+
+const bitsProvider: BitsProvider = {
+  bits(family, id) {
+    return loadedFamilies.get(family)?.bits(id) ?? null;
+  },
+};
 
 function readForm(): FormState {
   const v = (id: string): string => {
@@ -47,6 +57,20 @@ function recompute(): void {
   const out = document.getElementById("preview");
   if (!out) return;
   const s = readForm();
+
+  // Kick off a load for any family the form mentions but we haven't loaded.
+  if (s.family && !loadedFamilies.has(s.family) && listFamilyNames().includes(s.family)) {
+    void loadFamily(s.family).then(
+      (bm) => {
+        loadedFamilies.set(s.family, bm);
+        recompute();
+      },
+      (err: unknown) => {
+        console.error("failed to load family", s.family, err);
+      },
+    );
+  }
+
   if (
     !Number.isFinite(s.count) ||
     !Number.isFinite(s.tagSize_mm) ||
@@ -70,13 +94,18 @@ function recompute(): void {
 
   try {
     const plan = planSmallTagLayout(tags, s.tagSize_mm, paper, options);
+    const loaded = loadedFamilies.has(s.family);
     const summary = `${plan.placements.length} tag${
       plan.placements.length === 1 ? "" : "s"
     } across ${plan.pageCount} page${plan.pageCount === 1 ? "" : "s"} on ${
       paper.width_mm
-    } × ${paper.height_mm} mm paper.`;
+    } × ${paper.height_mm} mm paper.${loaded ? "" : " (Loading bitmaps…)"}`;
     const pages = Array.from({ length: plan.pageCount }, (_, p) => {
-      return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(plan, p)}</section>`;
+      return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
+        plan,
+        p,
+        bitsProvider,
+      )}</section>`;
     }).join("");
     out.innerHTML = `<p>${summary}</p>${pages || "<p>(no pages)</p>"}`;
   } catch (e) {
@@ -89,15 +118,20 @@ function recompute(): void {
 function bootstrap(): void {
   const app = document.getElementById("app");
   if (!app) return;
+  const familyOptions = listFamilyNames()
+    .map((n) => `<option value="${n}">${n}</option>`)
+    .join("");
   app.innerHTML = `
     <h1>AprilTag PDF Generator <small style="font-weight:normal;color:#888">— layout preview</small></h1>
-    <p style="color:#666">Tag bitmaps and PDF download arrive in Part 2. The
-       boxes below show only tag <em>positions</em>, quiet zones (cream),
-       cut lines (red), and the page-margin guide (dashed).</p>
+    <p style="color:#666">PDF download arrives in Part 2; this view shows
+       only layout, quiet zones (cream), cut lines (red), and the page-margin
+       guide (dashed). Real tag bitmaps are loaded from the family mosaic.</p>
     <form id="form">
       <fieldset>
         <legend>Tags</legend>
-        <label>Family <input id="family" type="text" value="tag36h11"></label>
+        <label>Family
+          <select id="family">${familyOptions}</select>
+        </label>
         <label>Start ID <input id="startId" type="number" value="0" min="0"></label>
         <label>Count <input id="count" type="number" value="20" min="1"></label>
       </fieldset>
@@ -125,6 +159,7 @@ function bootstrap(): void {
   `;
   const form = document.getElementById("form");
   form?.addEventListener("input", recompute);
+  form?.addEventListener("change", recompute);
   recompute();
 }
 
