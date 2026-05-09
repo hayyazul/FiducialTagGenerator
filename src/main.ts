@@ -114,7 +114,11 @@ async function handleDownload(): Promise<void> {
   const btn = document.getElementById("downloadPdf") as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   try {
-    const bytes = await renderPlan(currentPlan, bitsProvider);
+    const printLabelsOnBack =
+      (field("printLabelsOnBack") as HTMLInputElement).checked;
+    const bytes = await renderPlan(currentPlan, bitsProvider, {
+      printLabelsOnBack,
+    });
     // Copy into a fresh ArrayBuffer-backed Uint8Array; pdf-lib's return type
     // is `Uint8Array<ArrayBufferLike>` which Blob's typing rejects directly.
     const buf = new Uint8Array(bytes.length);
@@ -292,6 +296,11 @@ function bootstrap(): void {
           <div>
             <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled></label>
             <span style="color:#888;font-size:0.85em">blade slack on each side of every cut</span>
+          </div>
+          <hr style="margin:0.5rem 0;border:0;border-top:1px solid #eee">
+          <div>
+            <label><input type="checkbox" id="printLabelsOnBack"> Print tag info on backside</label>
+            <span style="color:#888;font-size:0.85em">for double-sided printing (long-edge / horizontal flip)</span>
           </div>
         </details>
       </fieldset>
