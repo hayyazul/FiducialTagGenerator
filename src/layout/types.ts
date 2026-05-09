@@ -31,17 +31,13 @@ export interface Paper {
  *    detection requires this; cutting must not slice into it).
  *  - cutMargin_mm: extra white paper outside the quiet zone where the
  *    blade travels. After trimming, the tag retains its quiet zone and
- *    loses (most of) the cut margin.
- *  - interTagGap_mm: paper between two adjacent tags' (bitmap +
- *    quietZone + cutMargin) footprints. When 0, adjacent tags share a
- *    single cut line. When > 0, two parallel cuts are made and the strip
- *    between is discarded.
+ *    loses (most of) the cut margin. Adjacent tags share a single cut
+ *    line through the boundary between their cut-margin regions.
  */
 export interface LayoutOptions {
   pageMargin_mm: number;
   quietZone_mm: number;
   cutMargin_mm: number;
-  interTagGap_mm: number;
 }
 
 /**

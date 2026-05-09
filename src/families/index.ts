@@ -21,6 +21,10 @@ export interface TagFamilyDef {
   mosaicPath: string;
   tileSize_px: number;
   embeddedQuietZone_px: number;
+  /** Number of valid tag IDs in the family. The mosaic may contain extra
+   *  blank tiles to round out a rectangular grid; ids ≥ this number do not
+   *  correspond to real tags. */
+  validTagCount: number;
 }
 
 const FAMILIES: Record<string, TagFamilyDef> = {
@@ -29,6 +33,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     mosaicPath: `${import.meta.env.BASE_URL}resources/tag36h11_mosaic.png`,
     tileSize_px: 10,
     embeddedQuietZone_px: 1,
+    validTagCount: 587,
   },
 };
 

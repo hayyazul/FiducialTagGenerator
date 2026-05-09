@@ -8,7 +8,6 @@ const minimalOpts: LayoutOptions = {
   pageMargin_mm: 0,
   quietZone_mm: 0,
   cutMargin_mm: 0,
-  interTagGap_mm: 0,
 };
 
 describe("renderPlanToSvg", () => {

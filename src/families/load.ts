@@ -14,7 +14,8 @@ export interface FamilyBitmaps {
   edge: number;
   /** Total tiles in the mosaic (≥ valid tag count). */
   totalTiles: number;
-  /** Bit grid for tag `id`, or null if id is out of mosaic range. */
+  /** Bit grid for tag `id`, or null if id is out of mosaic range or beyond
+   *  the family's validTagCount. */
   bits(id: number): boolean[][] | null;
 }
 
@@ -59,7 +60,7 @@ async function decode(family: TagFamilyDef): Promise<FamilyBitmaps> {
     edge,
     totalTiles,
     bits(id: number): boolean[][] | null {
-      if (id < 0 || id >= totalTiles) return null;
+      if (id < 0 || id >= totalTiles || id >= family.validTagCount) return null;
       const hit = bitsCache.get(id);
       if (hit) return hit;
       const b = extractTagBits(gray, W, H, family, id);

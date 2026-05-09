@@ -1,16 +1,23 @@
-import { listFamilyNames } from "./families";
+import { getFamily, listFamilyNames, tagBitmapEdge_px, type TagFamilyDef } from "./families";
 import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { planSmallTagLayout } from "./layout/plan";
 import type { LayoutOptions, Paper, TagSpec } from "./layout/types";
 import { type BitsProvider, renderPlanToSvg } from "./preview/svg";
 
 // Crude preview UI for Part 1. No PDF download yet; that arrives with Part 2.
+//
+// Convention: "Tag size" refers to the AprilTag *canonical* edge — the black
+// square that detection libraries expect — not the printed footprint. The
+// printed footprint (= canonical + 2× quiet zone + 2× cut margin) is shown
+// as a derived line below the form.
 
 const PAPERS: Record<string, Paper> = {
   A4: { width_mm: 210, height_mm: 297 },
   Letter: { width_mm: 215.9, height_mm: 279.4 },
   Square100: { width_mm: 100, height_mm: 100 },
 };
+
+const DEFAULT_CUT_MARGIN_MM = 0.5;
 
 interface FormState {
   family: string;
@@ -19,9 +26,9 @@ interface FormState {
   tagSize_mm: number;
   paperKey: string;
   pageMargin_mm: number;
+  overrideAdvanced: boolean;
   quietZone_mm: number;
   cutMargin_mm: number;
-  interTagGap_mm: number;
 }
 
 const loadedFamilies = new Map<string, FamilyBitmaps>();
@@ -32,34 +39,67 @@ const bitsProvider: BitsProvider = {
   },
 };
 
+function field(id: string): HTMLInputElement | HTMLSelectElement {
+  const el = document.getElementById(id);
+  if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLSelectElement)) {
+    throw new Error(`form field #${id} not found`);
+  }
+  return el;
+}
+
+/** Recommended quiet zone per AprilTag spec: 1 module wide.
+ *  module_mm = canonical tag size / bitmap edge in modules. */
+function deriveQuietZone_mm(tagSize_mm: number, family: TagFamilyDef): number {
+  const edgeModules = tagBitmapEdge_px(family);
+  if (!Number.isFinite(tagSize_mm) || tagSize_mm <= 0 || edgeModules <= 0) return 0;
+  return tagSize_mm / edgeModules;
+}
+
 function readForm(): FormState {
-  const v = (id: string): string => {
-    const el = document.getElementById(id);
-    if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLSelectElement)) {
-      throw new Error(`form field #${id} not found`);
-    }
-    return el.value;
-  };
   return {
-    family: v("family"),
-    startId: Number.parseInt(v("startId"), 10),
-    count: Number.parseInt(v("count"), 10),
-    tagSize_mm: Number.parseFloat(v("tagSize")),
-    paperKey: v("paper"),
-    pageMargin_mm: Number.parseFloat(v("pageMargin")),
-    quietZone_mm: Number.parseFloat(v("quietZone")),
-    cutMargin_mm: Number.parseFloat(v("cutMargin")),
-    interTagGap_mm: Number.parseFloat(v("interTagGap")),
+    family: field("family").value,
+    startId: Number.parseInt(field("startId").value, 10),
+    count: Number.parseInt(field("count").value, 10),
+    tagSize_mm: Number.parseFloat(field("tagSize").value),
+    paperKey: field("paper").value,
+    pageMargin_mm: Number.parseFloat(field("pageMargin").value),
+    overrideAdvanced: (field("overrideAdvanced") as HTMLInputElement).checked,
+    quietZone_mm: Number.parseFloat(field("quietZone").value),
+    cutMargin_mm: Number.parseFloat(field("cutMargin").value),
   };
+}
+
+/** Sync the disabled-state of advanced inputs to the override checkbox, and
+ *  refill them with the auto-derived values when the override is off. */
+function syncAdvancedFields(s: FormState, familyDef: TagFamilyDef | undefined): void {
+  const qz = field("quietZone") as HTMLInputElement;
+  const cm = field("cutMargin") as HTMLInputElement;
+  qz.disabled = !s.overrideAdvanced;
+  cm.disabled = !s.overrideAdvanced;
+  if (!s.overrideAdvanced) {
+    const auto = familyDef ? deriveQuietZone_mm(s.tagSize_mm, familyDef) : 0;
+    qz.value = Number.isFinite(auto) ? auto.toFixed(2) : "";
+    cm.value = DEFAULT_CUT_MARGIN_MM.toString();
+  }
+}
+
+function renderError(message: string): void {
+  const out = document.getElementById("preview");
+  if (out) out.innerHTML = `<p style="color:#c00">${escapeHtml(message)}</p>`;
 }
 
 function recompute(): void {
   const out = document.getElementById("preview");
   if (!out) return;
   const s = readForm();
+  const familyDef = getFamily(s.family);
+  syncAdvancedFields(s, familyDef);
 
-  // Kick off a load for any family the form mentions but we haven't loaded.
-  if (s.family && !loadedFamilies.has(s.family) && listFamilyNames().includes(s.family)) {
+  // Re-read after syncAdvancedFields, which may have refreshed the values.
+  const effective = readForm();
+
+  // Lazy-load the family the first time it's selected.
+  if (s.family && familyDef && !loadedFamilies.has(s.family)) {
     void loadFamily(s.family).then(
       (bm) => {
         loadedFamilies.set(s.family, bm);
@@ -72,34 +112,61 @@ function recompute(): void {
   }
 
   if (
-    !Number.isFinite(s.count) ||
-    !Number.isFinite(s.tagSize_mm) ||
-    s.count < 1 ||
-    s.tagSize_mm <= 0
+    !Number.isFinite(effective.count) ||
+    !Number.isFinite(effective.tagSize_mm) ||
+    effective.count < 1 ||
+    effective.tagSize_mm <= 0
   ) {
     out.innerHTML = `<p>Fill in count and tag size to see a preview.</p>`;
     return;
   }
-  const tags: TagSpec[] = Array.from({ length: s.count }, (_, i) => ({
-    family: s.family,
-    id: s.startId + i,
+
+  if (!familyDef) {
+    renderError(`Unknown tag family "${s.family}".`);
+    return;
+  }
+
+  // Bounds check: the family only has validTagCount valid tag IDs.
+  const lastId = effective.startId + effective.count - 1;
+  if (effective.startId < 0) {
+    renderError(`Start ID must be ≥ 0 (got ${effective.startId}).`);
+    return;
+  }
+  if (lastId >= familyDef.validTagCount) {
+    renderError(
+      `Requested ids ${effective.startId}..${lastId} exceed family ${familyDef.name}, ` +
+        `which has only ${familyDef.validTagCount} valid tags (max id ${
+          familyDef.validTagCount - 1
+        }). Reduce Count or Start ID.`,
+    );
+    return;
+  }
+
+  const tags: TagSpec[] = Array.from({ length: effective.count }, (_, i) => ({
+    family: effective.family,
+    id: effective.startId + i,
   }));
-  const paper = PAPERS[s.paperKey] ?? PAPERS.A4!;
+  const paper = PAPERS[effective.paperKey] ?? PAPERS.A4!;
   const options: LayoutOptions = {
-    pageMargin_mm: s.pageMargin_mm,
-    quietZone_mm: s.quietZone_mm,
-    cutMargin_mm: s.cutMargin_mm,
-    interTagGap_mm: s.interTagGap_mm,
+    pageMargin_mm: effective.pageMargin_mm,
+    quietZone_mm: effective.quietZone_mm,
+    cutMargin_mm: effective.cutMargin_mm,
   };
 
   try {
-    const plan = planSmallTagLayout(tags, s.tagSize_mm, paper, options);
-    const loaded = loadedFamilies.has(s.family);
-    const summary = `${plan.placements.length} tag${
-      plan.placements.length === 1 ? "" : "s"
-    } across ${plan.pageCount} page${plan.pageCount === 1 ? "" : "s"} on ${
-      paper.width_mm
-    } × ${paper.height_mm} mm paper.${loaded ? "" : " (Loading bitmaps…)"}`;
+    const plan = planSmallTagLayout(tags, effective.tagSize_mm, paper, options);
+    const loaded = loadedFamilies.has(effective.family);
+    const footprint =
+      effective.tagSize_mm + 2 * (effective.quietZone_mm + effective.cutMargin_mm);
+    const summary =
+      `${plan.placements.length} tag${plan.placements.length === 1 ? "" : "s"} ` +
+      `across ${plan.pageCount} page${plan.pageCount === 1 ? "" : "s"} on ` +
+      `${paper.width_mm} × ${paper.height_mm} mm paper.${loaded ? "" : " (Loading bitmaps…)"}`;
+    const detail =
+      `Canonical tag size ${effective.tagSize_mm.toFixed(2)} mm; ` +
+      `quiet zone ${effective.quietZone_mm.toFixed(2)} mm; ` +
+      `cut margin ${effective.cutMargin_mm.toFixed(2)} mm; ` +
+      `printed cell ${footprint.toFixed(2)} mm.`;
     const pages = Array.from({ length: plan.pageCount }, (_, p) => {
       return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
         plan,
@@ -107,12 +174,22 @@ function recompute(): void {
         bitsProvider,
       )}</section>`;
     }).join("");
-    out.innerHTML = `<p>${summary}</p>${pages || "<p>(no pages)</p>"}`;
+    out.innerHTML =
+      `<p>${escapeHtml(summary)}</p>` +
+      `<p style="color:#666;font-size:0.9em">${escapeHtml(detail)}</p>` +
+      (pages || "<p>(no pages)</p>");
   } catch (e) {
-    out.innerHTML = `<p style="color:#c00">Cannot lay out tags: ${
-      e instanceof Error ? e.message : String(e)
-    }</p>`;
+    renderError(
+      `Cannot lay out tags: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function bootstrap(): void {
@@ -123,8 +200,8 @@ function bootstrap(): void {
     .join("");
   app.innerHTML = `
     <h1>AprilTag PDF Generator <small style="font-weight:normal;color:#888">— layout preview</small></h1>
-    <p style="color:#666">PDF download arrives in Part 2; this view shows
-       only layout, quiet zones (cream), cut lines (red), and the page-margin
+    <p style="color:#666">PDF download arrives in Part 2. This view shows
+       layout, quiet zones (cream), cut lines (red), and the page-margin
        guide (dashed). Real tag bitmaps are loaded from the family mosaic.</p>
     <form id="form">
       <fieldset>
@@ -147,11 +224,25 @@ function bootstrap(): void {
         <label>Page margin (mm) <input id="pageMargin" type="number" value="10" step="0.5" min="0"></label>
       </fieldset>
       <fieldset>
-        <legend>Tag geometry (mm)</legend>
-        <label>Tag size <input id="tagSize" type="number" value="40" step="0.5" min="1"></label>
-        <label>Quiet zone <input id="quietZone" type="number" value="2" step="0.1" min="0"></label>
-        <label>Cut margin <input id="cutMargin" type="number" value="1" step="0.1" min="0"></label>
-        <label>Inter-tag gap <input id="interTagGap" type="number" value="0" step="0.5" min="0"></label>
+        <legend>Tag</legend>
+        <label>Tag size (mm)
+          <input id="tagSize" type="number" value="40" step="0.5" min="1">
+        </label>
+        <span style="color:#888;font-size:0.85em">canonical (black-border) edge — what detectors expect</span>
+        <details style="margin-top:0.5rem">
+          <summary style="cursor:pointer">Advanced</summary>
+          <div style="margin-top:0.4rem">
+            <label><input type="checkbox" id="overrideAdvanced"> Override defaults</label>
+          </div>
+          <div style="margin-top:0.3rem">
+            <label>Quiet zone (mm) <input id="quietZone" type="number" step="0.1" min="0" disabled></label>
+            <span style="color:#888;font-size:0.85em">auto = 1 module = tagSize / bitmap edge</span>
+          </div>
+          <div>
+            <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled></label>
+            <span style="color:#888;font-size:0.85em">blade slack on each side of every cut</span>
+          </div>
+        </details>
       </fieldset>
     </form>
     <hr>

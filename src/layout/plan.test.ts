@@ -9,7 +9,6 @@ const noMargins: LayoutOptions = {
   pageMargin_mm: 0,
   quietZone_mm: 0,
   cutMargin_mm: 0,
-  interTagGap_mm: 0,
 };
 
 function makeTags(family: string, count: number): TagSpec[] {
@@ -49,14 +48,6 @@ describe("planSmallTagLayout — grid capacity", () => {
     expect(plan.placements).toHaveLength(16);
   });
 
-  it("uses (W+gap)/(F+gap) when interTagGap is non-zero", () => {
-    // F = 20, gap = 5 → (100+5)/(20+5) = 4.2 ⇒ 4 cols/rows.
-    const opts: LayoutOptions = { ...noMargins, interTagGap_mm: 5 };
-    const plan = planSmallTagLayout(makeTags("tag36h11", 16), 20, square100, opts);
-    expect(plan.placements).toHaveLength(16);
-    // Pitch between tag origins is F + gap = 25mm.
-    expect(plan.placements[1]?.x_mm).toBeCloseTo(25, 6);
-  });
 });
 
 describe("planSmallTagLayout — page assignment", () => {
@@ -89,7 +80,7 @@ describe("planSmallTagLayout — page assignment", () => {
 });
 
 describe("planSmallTagLayout — cut segments", () => {
-  it("emits a shared grid (rows+1 horizontals, cols+1 verticals) when interTagGap is 0", () => {
+  it("emits a shared grid (rows+1 horizontals, cols+1 verticals)", () => {
     // 2×2 grid: 50mm paper with 25mm tag footprint = (50/25) = 2 cols.
     const paper: Paper = { width_mm: 50, height_mm: 50 };
     const plan = planSmallTagLayout(makeTags("tag36h11", 4), 25, paper, noMargins);
@@ -98,19 +89,6 @@ describe("planSmallTagLayout — cut segments", () => {
     const horizontals = cuts.filter((c) => c.y0_mm === c.y1_mm);
     expect(verticals).toHaveLength(3); // cols+1
     expect(horizontals).toHaveLength(3); // rows+1
-  });
-
-  it("emits separate parallel cuts when interTagGap is non-zero", () => {
-    // 2×2 grid with interTagGap > 0: each cell has its own perimeter.
-    // Verticals: 2*cols = 4. Horizontals: 2*rows = 4.
-    const paper: Paper = { width_mm: 55, height_mm: 55 };
-    const opts: LayoutOptions = { ...noMargins, interTagGap_mm: 5 };
-    const plan = planSmallTagLayout(makeTags("tag36h11", 4), 25, paper, opts);
-    const cuts = plan.cutSegments.filter((c) => c.page === 0);
-    const verticals = cuts.filter((c) => c.x0_mm === c.x1_mm);
-    const horizontals = cuts.filter((c) => c.y0_mm === c.y1_mm);
-    expect(verticals).toHaveLength(4);
-    expect(horizontals).toHaveLength(4);
   });
 });
 
@@ -157,7 +135,6 @@ describe("maxTagSizeForCount", () => {
       pageMargin_mm: 10,
       quietZone_mm: 2,
       cutMargin_mm: 1,
-      interTagGap_mm: 0,
     };
     const size = maxTagSizeForCount(20, A4, opts, 1);
     expect(size).toBeGreaterThan(0);

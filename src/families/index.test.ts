@@ -16,6 +16,7 @@ function makeFakeMosaic(): {
     mosaicPath: "",
     tileSize_px: 4,
     embeddedQuietZone_px: 1,
+    validTagCount: 4,
   };
   // Layout:
   //   tiles at (0..3, 0..3), (5..8, 0..3), (0..3, 5..8), (5..8, 5..8)
@@ -54,6 +55,7 @@ describe("mosaicGrid", () => {
       mosaicPath: "",
       tileSize_px: 10,
       embeddedQuietZone_px: 1,
+      validTagCount: 587,
     };
     expect(mosaicGrid(family, 263, 274)).toEqual({ cols: 24, rows: 25 });
   });
@@ -81,6 +83,7 @@ describe("extractTagBits", () => {
       mosaicPath: "",
       tileSize_px: 4,
       embeddedQuietZone_px: 1,
+      validTagCount: 1,
     };
     // Single 4×4 tile; bitmap region (1..2, 1..2).
     // Make top row black, bottom row white.
