@@ -1,11 +1,10 @@
 import { getFamily, listFamilyNames, tagBitmapEdge_px, type TagFamilyDef } from "./families";
 import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { planSmallTagLayout } from "./layout/plan";
-import type { LayoutOptions, Paper, TagSpec } from "./layout/types";
+import type { LayoutOptions, LayoutPlan, Paper, TagSpec } from "./layout/types";
 import { type BitsProvider, renderPlanToSvg } from "./preview/svg";
+import { renderPlan } from "./render/pdf";
 
-// Crude preview UI for Part 1. No PDF download yet; that arrives with Part 2.
-//
 // Convention: "Tag size" refers to the AprilTag *canonical* edge — the black
 // square that detection libraries expect — not the printed footprint. The
 // printed footprint (= canonical + 2× quiet zone + 2× cut margin) is shown
@@ -38,6 +37,10 @@ const bitsProvider: BitsProvider = {
     return loadedFamilies.get(family)?.bits(id) ?? null;
   },
 };
+
+// Cached most recent valid plan, used by the Download button.
+let currentPlan: LayoutPlan | null = null;
+let currentFamily: string | null = null;
 
 function field(id: string): HTMLInputElement | HTMLSelectElement {
   const el = document.getElementById(id);
@@ -86,6 +89,50 @@ function syncAdvancedFields(s: FormState, familyDef: TagFamilyDef | undefined): 
 function renderError(message: string): void {
   const out = document.getElementById("preview");
   if (out) out.innerHTML = `<p style="color:#c00">${escapeHtml(message)}</p>`;
+  currentPlan = null;
+  currentFamily = null;
+  syncDownloadButton();
+}
+
+function syncDownloadButton(): void {
+  const btn = document.getElementById("downloadPdf") as HTMLButtonElement | null;
+  if (!btn) return;
+  const ready =
+    currentPlan !== null &&
+    currentFamily !== null &&
+    loadedFamilies.has(currentFamily);
+  btn.disabled = !ready;
+  btn.title = ready
+    ? ""
+    : currentPlan === null
+      ? "Adjust the form so a plan is valid."
+      : "Waiting for tag bitmaps to finish loading.";
+}
+
+async function handleDownload(): Promise<void> {
+  if (!currentPlan || !currentFamily || !loadedFamilies.has(currentFamily)) return;
+  const btn = document.getElementById("downloadPdf") as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  try {
+    const bytes = await renderPlan(currentPlan, bitsProvider);
+    // Copy into a fresh ArrayBuffer-backed Uint8Array; pdf-lib's return type
+    // is `Uint8Array<ArrayBufferLike>` which Blob's typing rejects directly.
+    const buf = new Uint8Array(bytes.length);
+    buf.set(bytes);
+    const blob = new Blob([buf], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `apriltags-${currentFamily}-${currentPlan.placements.length}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    renderError(`PDF render failed: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    syncDownloadButton();
+  }
 }
 
 function recompute(): void {
@@ -103,6 +150,7 @@ function recompute(): void {
     void loadFamily(s.family).then(
       (bm) => {
         loadedFamilies.set(s.family, bm);
+        syncDownloadButton();
         recompute();
       },
       (err: unknown) => {
@@ -178,6 +226,9 @@ function recompute(): void {
       `<p>${escapeHtml(summary)}</p>` +
       `<p style="color:#666;font-size:0.9em">${escapeHtml(detail)}</p>` +
       (pages || "<p>(no pages)</p>");
+    currentPlan = plan;
+    currentFamily = effective.family;
+    syncDownloadButton();
   } catch (e) {
     renderError(
       `Cannot lay out tags: ${e instanceof Error ? e.message : String(e)}`,
@@ -245,12 +296,16 @@ function bootstrap(): void {
         </details>
       </fieldset>
     </form>
+    <p><button id="downloadPdf" type="button" disabled>Download PDF</button></p>
     <hr>
     <div id="preview"></div>
   `;
   const form = document.getElementById("form");
   form?.addEventListener("input", recompute);
   form?.addEventListener("change", recompute);
+  document.getElementById("downloadPdf")?.addEventListener("click", () => {
+    void handleDownload();
+  });
   recompute();
 }
 

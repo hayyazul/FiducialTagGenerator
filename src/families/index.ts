@@ -16,6 +16,18 @@
  * into `public/resources/`. No other code needs to change.
  */
 
+/**
+ * A consumer of tag bit grids. The `preview/svg` and `render/pdf` modules
+ * both need a way to look up the bitmap for a (family, id) pair without
+ * caring whether it came from a static fixture, the live `families/load`
+ * loader, or a unit-test mock. `null` means "not available right now"
+ * (mosaic still loading, unknown family, id out of range); consumers
+ * should fall back to a placeholder rather than failing.
+ */
+export interface BitsProvider {
+  bits(family: string, id: number): boolean[][] | null;
+}
+
 export interface TagFamilyDef {
   name: string;
   mosaicPath: string;

@@ -1,14 +1,7 @@
+import type { BitsProvider } from "../families";
 import type { LayoutPlan } from "../layout/types";
 
-/**
- * Caller supplies tag bitmaps if it has them. Returning null (or omitting
- * the provider entirely) yields the placeholder rendering — a solid black
- * square with the tag id printed in white — which is useful when the
- * mosaic is still loading or for an unknown family.
- */
-export interface BitsProvider {
-  bits(family: string, id: number): boolean[][] | null;
-}
+export type { BitsProvider };
 
 /**
  * Render a single page of a LayoutPlan to an SVG string.
