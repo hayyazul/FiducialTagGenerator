@@ -4,3 +4,4 @@ dist/
 .vite/
 .DS_Store
 coverage/
+STYLES.md
