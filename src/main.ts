@@ -6,6 +6,7 @@ import {
   type TagFamilyDef,
 } from "./families";
 import { type FamilyBitmaps, loadFamily } from "./families/load";
+import { parseTagIdSpec } from "./ids";
 import { planSmallTagLayout } from "./layout/plan";
 import type { LayoutOptions, LayoutPlan, Paper, TagSpec } from "./layout/types";
 import { renderPlanToSvg } from "./preview/svg";
@@ -30,8 +31,7 @@ const DEFAULT_CUT_MARGIN_MM = 0.5;
 
 interface FormState {
   family: string;
-  startId: number;
-  count: number;
+  idSpec: string;
   tagSize_mm: number;
   paperKey: string;
   pageMargin_mm: number;
@@ -75,8 +75,7 @@ function deriveQuietZone_mm(tagSize_mm: number, family: TagFamilyDef): number {
 function readForm(): FormState {
   return {
     family: field("family").value,
-    startId: Number.parseInt(field("startId").value, 10),
-    count: Number.parseInt(field("count").value, 10),
+    idSpec: field("ids").value,
     tagSize_mm: Number.parseFloat(field("tagSize").value),
     paperKey: field("paper").value,
     pageMargin_mm: Number.parseFloat(field("pageMargin").value),
@@ -104,8 +103,7 @@ function syncAdvancedFields(s: FormState, familyDef: TagFamilyDef | undefined): 
  *  `<span class="field-error" id="${id}-err">` in the markup. */
 const ERROR_FIELD_IDS = [
   "family",
-  "startId",
-  "count",
+  "ids",
   "tagSize",
   "pageMargin",
   "quietZone",
@@ -224,11 +222,16 @@ function recompute(): void {
     return;
   }
 
-  let bad = false;
-  if (!Number.isFinite(effective.count) || effective.count < 1) {
-    setFieldError("count", "Enter a whole number, 1 or more.");
-    bad = true;
+  let tagIds: number[];
+  try {
+    tagIds = parseTagIdSpec(effective.idSpec);
+  } catch (e) {
+    setFieldError("ids", e instanceof Error ? e.message : String(e));
+    failPreview("Fix the tag IDs to see a preview.");
+    return;
   }
+
+  let bad = false;
   if (!Number.isFinite(effective.tagSize_mm) || effective.tagSize_mm <= 0) {
     setFieldError("tagSize", "Enter a size in mm greater than 0.");
     bad = true;
@@ -247,31 +250,21 @@ function recompute(): void {
       bad = true;
     }
   }
-  if (bad) {
-    failPreview("Fill in the highlighted fields to see a preview.");
-    return;
-  }
-
-  if (effective.startId < 0) {
-    setFieldError("startId", "Start ID can't be negative.");
-    failPreview("Start ID can't be negative.");
-    return;
-  }
-  const lastId = effective.startId + effective.count - 1;
-  if (lastId >= familyDef.validTagCount) {
-    const msg =
+  const maxId = tagIds.reduce((m, x) => Math.max(m, x), 0);
+  if (maxId >= familyDef.validTagCount) {
+    setFieldError(
+      "ids",
       `This family has ${familyDef.validTagCount} tags (IDs 0–${familyDef.validTagCount - 1}); ` +
-      `you asked for IDs up to ${lastId}.`;
-    setFieldError("startId", msg);
-    setFieldError("count", msg);
-    failPreview("Some requested tag IDs don't exist in this family.");
+        `ID ${maxId} doesn't exist.`,
+    );
+    bad = true;
+  }
+  if (bad) {
+    failPreview("Fix the highlighted fields to see a preview.");
     return;
   }
 
-  const tags: TagSpec[] = Array.from({ length: effective.count }, (_, i) => ({
-    family: effective.family,
-    id: effective.startId + i,
-  }));
+  const tags: TagSpec[] = tagIds.map((id) => ({ family: effective.family, id }));
   const paper = PAPERS[effective.paperKey] ?? PAPERS.A4!;
   const options: LayoutOptions = {
     pageMargin_mm: effective.pageMargin_mm,
@@ -352,8 +345,8 @@ function bootstrap(): void {
             <label>Family
               <select id="family">${familyOptions}</select><span class="field-error" id="family-err"></span>
             </label>
-            <label>Start ID <input id="startId" type="number" value="0" min="0"><span class="field-error" id="startId-err"></span></label>
-            <label>Count <input id="count" type="number" value="20" min="1"><span class="field-error" id="count-err"></span></label>
+            <label>Tag IDs <input id="ids" type="text" value="0-19"><span class="field-error" id="ids-err"></span></label>
+            <span style="color:#888;font-size:0.85em">single IDs and ranges, e.g. 0-9, 12, 15-20</span>
           </fieldset>
           <fieldset>
             <legend>Paper</legend>
