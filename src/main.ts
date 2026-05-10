@@ -85,18 +85,60 @@ function readForm(): FormState {
   };
 }
 
-/** Sync the disabled-state of advanced inputs to the override checkbox, and
- *  refill them with the auto-derived values when the override is off. */
-function syncAdvancedFields(s: FormState, familyDef: TagFamilyDef | undefined): void {
+/** "Total size" = tag size + the quiet zone on every side. With the override
+ *  off the quiet zone is the auto 1-module width, so total is a fixed multiple
+ *  of the tag size; with it on, total is tag size + 2× the user's quiet zone.
+ *  Returns null when the tag size isn't a usable number. */
+function totalSizeFromTag(s: FormState, familyDef: TagFamilyDef | undefined): number | null {
+  if (!familyDef || !Number.isFinite(s.tagSize_mm) || s.tagSize_mm <= 0) return null;
+  if (s.overrideAdvanced) {
+    const qz = Number.isFinite(s.quietZone_mm) && s.quietZone_mm >= 0 ? s.quietZone_mm : 0;
+    return s.tagSize_mm + 2 * qz;
+  }
+  const edge = tagBitmapEdge_px(familyDef);
+  if (edge <= 0) return null;
+  return s.tagSize_mm * (1 + 2 / edge);
+}
+
+/** Sync derived/dependent fields to the form state:
+ *   - quiet zone & cut margin: editable only with the override on; otherwise
+ *     refilled with their auto values;
+ *   - total size: editable only with the override off (typing into it rescales
+ *     the tag size — see `handleTotalSizeInput`); otherwise a read-only mirror
+ *     of tag size + quiet zone. Never overwritten while it has focus. */
+function syncDependentFields(s: FormState, familyDef: TagFamilyDef | undefined): void {
   const qz = field("quietZone") as HTMLInputElement;
   const cm = field("cutMargin") as HTMLInputElement;
+  const total = field("totalSize") as HTMLInputElement;
+
   qz.disabled = !s.overrideAdvanced;
   cm.disabled = !s.overrideAdvanced;
+  total.disabled = s.overrideAdvanced;
+
   if (!s.overrideAdvanced) {
     const auto = familyDef ? deriveQuietZone_mm(s.tagSize_mm, familyDef) : 0;
     qz.value = Number.isFinite(auto) ? auto.toFixed(2) : "";
     cm.value = DEFAULT_CUT_MARGIN_MM.toString();
   }
+
+  if (document.activeElement !== total) {
+    const t = totalSizeFromTag(s, familyDef);
+    total.value = t === null ? "" : t.toFixed(2);
+  }
+}
+
+/** When the user edits Total size directly (only possible with the override
+ *  off), push the implied tag size back into the Tag size field. `recompute`
+ *  then re-reads the form and renders from that. */
+function handleTotalSizeInput(): void {
+  const total = field("totalSize") as HTMLInputElement;
+  if (total.disabled) return;
+  const familyDef = getFamily(field("family").value);
+  const totalVal = Number.parseFloat(total.value);
+  if (!familyDef || !Number.isFinite(totalVal) || totalVal <= 0) return;
+  const edge = tagBitmapEdge_px(familyDef);
+  if (edge <= 0) return;
+  (field("tagSize") as HTMLInputElement).value = (totalVal / (1 + 2 / edge)).toFixed(2);
 }
 
 /** Form fields that can carry an inline validation error. Each has a sibling
@@ -105,6 +147,7 @@ const ERROR_FIELD_IDS = [
   "family",
   "ids",
   "tagSize",
+  "totalSize",
   "pageMargin",
   "quietZone",
   "cutMargin",
@@ -197,9 +240,9 @@ function recompute(): void {
 
   const s = readForm();
   const familyDef = getFamily(s.family);
-  syncAdvancedFields(s, familyDef);
+  syncDependentFields(s, familyDef);
 
-  // Re-read after syncAdvancedFields, which may have refreshed the values.
+  // Re-read after syncDependentFields, which may have refreshed the values.
   const effective = readForm();
 
   // Lazy-load the family the first time it's selected.
@@ -235,6 +278,13 @@ function recompute(): void {
   if (!Number.isFinite(effective.tagSize_mm) || effective.tagSize_mm <= 0) {
     setFieldError("tagSize", "Enter a size in mm greater than 0.");
     bad = true;
+  }
+  if (!effective.overrideAdvanced) {
+    const totalVal = Number.parseFloat((field("totalSize") as HTMLInputElement).value);
+    if (!Number.isFinite(totalVal) || totalVal <= 0) {
+      setFieldError("totalSize", "Enter a size in mm greater than 0.");
+      bad = true;
+    }
   }
   if (!Number.isFinite(effective.pageMargin_mm) || effective.pageMargin_mm < 0) {
     setFieldError("pageMargin", "Enter 0 or more.");
@@ -284,6 +334,8 @@ function recompute(): void {
       if (effective.overrideAdvanced) {
         setFieldError("quietZone", tooBig);
         setFieldError("cutMargin", tooBig);
+      } else {
+        setFieldError("totalSize", tooBig);
       }
       failPreview("These tags don't fit on the chosen paper.");
     } else {
@@ -364,6 +416,10 @@ function bootstrap(): void {
               <input id="tagSize" type="number" value="40" step="0.5" min="1"><span class="field-error" id="tagSize-err"></span>
             </label>
             <span style="color:#888;font-size:0.85em">canonical (black-border) edge — what detectors expect</span>
+            <label>Total size (mm)
+              <input id="totalSize" type="number" step="0.5" min="1"><span class="field-error" id="totalSize-err"></span>
+            </label>
+            <span style="color:#888;font-size:0.85em">tag plus its quiet zone on every side; edit either, the other follows</span>
             <details style="margin-top:0.5rem">
               <summary style="cursor:pointer">Advanced</summary>
               <div style="margin-top:0.4rem">
@@ -397,6 +453,9 @@ function bootstrap(): void {
     </div>
   `;
   const form = document.getElementById("form");
+  // Runs before the form-level `recompute` (event reaches the target first),
+  // so the rescaled tag size is in place by the time `recompute` reads it.
+  document.getElementById("totalSize")?.addEventListener("input", handleTotalSizeInput);
   form?.addEventListener("input", recompute);
   form?.addEventListener("change", recompute);
   document.getElementById("downloadPdf")?.addEventListener("click", () => {
