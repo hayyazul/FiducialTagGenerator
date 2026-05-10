@@ -28,28 +28,6 @@ const PAPERS: Record<string, Paper> = {
 
 const DEFAULT_CUT_MARGIN_MM = 0.5;
 
-// A single recompute rebuilds the whole preview (plan + per-page SVG +
-// innerHTML), which is cheap for a few tags but seconds for a page packed
-// with hundreds of tiny ones. Coalesce rapid edits (held spinner, fast
-// typing) so we render once the input settles rather than once per keystroke.
-// 70 ms outlasts the OS key-repeat interval while staying below the ~100 ms
-// where a UI starts to feel laggy.
-const PREVIEW_DEBOUNCE_MS = 70;
-
-function debounce<A extends unknown[]>(
-  fn: (...args: A) => void,
-  delayMs: number,
-): (...args: A) => void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return (...args: A): void => {
-    if (timer !== undefined) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = undefined;
-      fn(...args);
-    }, delayMs);
-  };
-}
-
 interface FormState {
   family: string;
   startId: number;
@@ -353,13 +331,11 @@ function bootstrap(): void {
     </div>
   `;
   const form = document.getElementById("form");
-  const scheduleRecompute = debounce(recompute, PREVIEW_DEBOUNCE_MS);
-  form?.addEventListener("input", scheduleRecompute);
-  form?.addEventListener("change", scheduleRecompute);
+  form?.addEventListener("input", recompute);
+  form?.addEventListener("change", recompute);
   document.getElementById("downloadPdf")?.addEventListener("click", () => {
     void handleDownload();
   });
-  // Initial render is immediate; only user-driven edits are debounced.
   recompute();
 }
 
