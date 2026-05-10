@@ -18,6 +18,13 @@ export interface TagImageProvider {
   imageHref(family: string, id: number): string | null;
 }
 
+// Colours and line weights mirror what `render/pdf` draws so the preview is a
+// faithful render of a printed layout page (everything except the calibration
+// sheet). Greys are the PDF's rgb() values scaled to 0–255.
+const CUT_LINE = "#8c8c8c"; // rgb(0.55)
+const REG_MARK = "#666666"; // rgb(0.4)
+const TAG_LABEL = "#4d4d4d"; // rgb(0.3)
+
 /**
  * Render a single page of a LayoutPlan to an SVG string.
  *
@@ -33,36 +40,20 @@ export function renderPlanToSvg(
   const W = plan.paper.width_mm;
   const H = plan.paper.height_mm;
   const tag = plan.tagSize_mm;
-  const opts = plan.options;
   const flipY = (y_mm: number): number => H - y_mm;
 
   const placements = plan.placements.filter((p) => p.page === page);
   const cuts = plan.cutSegments.filter((c) => c.page === page);
 
-  const margin = opts.pageMargin_mm;
-  const marginRect =
-    margin > 0
-      ? `<rect x="${margin}" y="${margin}" width="${W - 2 * margin}" ` +
-        `height="${H - 2 * margin}" fill="none" stroke="#bbb" ` +
-        `stroke-dasharray="1 1" stroke-width="0.2"/>`
-      : "";
-
   const tagShapes = placements
     .map((p) => {
       const yTop = flipY(p.y_mm + tag);
-      const qzX = p.x_mm - opts.quietZone_mm;
-      const qzY = flipY(p.y_mm + tag + opts.quietZone_mm);
-      const qzSize = tag + 2 * opts.quietZone_mm;
-      const quietZoneRect =
-        opts.quietZone_mm > 0
-          ? `<rect x="${qzX}" y="${qzY}" width="${qzSize}" height="${qzSize}" fill="#fff8d6"/>`
-          : "";
       const href = images?.imageHref(p.tag.family, p.tag.id) ?? null;
       const body =
         href !== null
           ? renderTagImage(p.x_mm, yTop, tag, href)
           : renderPlaceholder(p.x_mm, yTop, tag, p.tag.family, p.tag.id);
-      return quietZoneRect + body;
+      return body + renderTagLabel(plan, p.x_mm, p.y_mm, tag, p.tag.family, p.tag.id, flipY);
     })
     .join("");
 
@@ -70,7 +61,7 @@ export function renderPlanToSvg(
     .map(
       (c) =>
         `<line x1="${c.x0_mm}" y1="${flipY(c.y0_mm)}" ` +
-        `x2="${c.x1_mm}" y2="${flipY(c.y1_mm)}" stroke="#c00" stroke-width="0.25"/>`,
+        `x2="${c.x1_mm}" y2="${flipY(c.y1_mm)}" stroke="${CUT_LINE}" stroke-width="0.25"/>`,
     )
     .join("");
 
@@ -78,7 +69,7 @@ export function renderPlanToSvg(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" ` +
     `width="100%" style="background:#fff;border:1px solid #999;display:block">` +
     `<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>` +
-    marginRect +
+    renderRegistrationMarks(plan, flipY) +
     tagShapes +
     cutLines +
     `</svg>`
@@ -87,8 +78,8 @@ export function renderPlanToSvg(
 
 /** Place a tag's bitmap PNG (`href`, one pixel per bit) into the `tagSize_mm`
  *  square whose top-left in SVG coords is `(x_mm, yTop_svg)`. The PNG's
- *  non-bit pixels are opaque white, so it doubles as the white underlay over
- *  the cream quiet-zone rectangle. `image-rendering: pixelated` makes the
+ *  non-bit pixels are opaque white, so the quiet zone around the bits reads as
+ *  blank paper — exactly as it prints. `image-rendering: pixelated` makes the
  *  browser upscale with nearest-neighbour, keeping the bit grid crisp. */
 function renderTagImage(
   x_mm: number,
@@ -116,6 +107,60 @@ function renderPlaceholder(
     `font-size="${labelSize}" text-anchor="middle" dominant-baseline="central" ` +
     `fill="#fff" font-family="monospace">${escapeXml(`${family}#${id}`)}</text>`
   );
+}
+
+/** The "<family> #<id>" caption `render/pdf` prints in the cut-margin band
+ *  below each tag. Sized to the cut margin, so it is microscopic with the
+ *  default 0.5 mm margin and only legible once the margin is widened. */
+function renderTagLabel(
+  plan: LayoutPlan,
+  x_mm: number,
+  y_mm: number,
+  tagSize_mm: number,
+  family: string,
+  id: number,
+  flipY: (y_mm: number) => number,
+): string {
+  const C = plan.options.cutMargin_mm;
+  if (C <= 0) return "";
+  const fontSize_mm = C * 0.7;
+  // Matches `render/pdf`'s baseline: y_mm − quietZone − C + 0.15·C.
+  const baseline_mm = y_mm - plan.options.quietZone_mm - C + 0.15 * C;
+  return (
+    `<text x="${x_mm + tagSize_mm / 2}" y="${flipY(baseline_mm)}" ` +
+    `font-size="${fontSize_mm}" text-anchor="middle" fill="${TAG_LABEL}" ` +
+    `font-family="monospace">${escapeXml(`${family} #${id}`)}</text>`
+  );
+}
+
+/** Four corner registration crosshairs, one `pageMargin_mm` in from each
+ *  corner — the same marks `render/pdf` draws. Each is two perpendicular
+ *  2 mm strokes. Omitted when there is no page margin. */
+function renderRegistrationMarks(
+  plan: LayoutPlan,
+  flipY: (y_mm: number) => number,
+): string {
+  const m = plan.options.pageMargin_mm;
+  if (m <= 0) return "";
+  const W = plan.paper.width_mm;
+  const H = plan.paper.height_mm;
+  const arm = 2;
+  return ([
+    [m, m],
+    [W - m, m],
+    [m, H - m],
+    [W - m, H - m],
+  ] as Array<[number, number]>)
+    .map(([cx, cy]) => {
+      const y = flipY(cy);
+      return (
+        `<line x1="${cx - arm}" y1="${y}" x2="${cx + arm}" y2="${y}" ` +
+        `stroke="${REG_MARK}" stroke-width="0.2"/>` +
+        `<line x1="${cx}" y1="${y - arm}" x2="${cx}" y2="${y + arm}" ` +
+        `stroke="${REG_MARK}" stroke-width="0.2"/>`
+      );
+    })
+    .join("");
 }
 
 function escapeXml(s: string): string {
