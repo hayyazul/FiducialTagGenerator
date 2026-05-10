@@ -109,6 +109,42 @@ async function run(): Promise<void> {
     });
   }
 
+  // Worst case: lots of tiny tags packed onto ONE page. The black-bit count
+  // (≈ rects emitted) is ~half of EDGE² per tag regardless of physical size,
+  // so this is where the SVG string and the DOM subtree get huge.
+  console.log("\n=== SVG preview render (MANY tags, ONE page) ===");
+  const dense: LayoutOptions = { pageMargin_mm: 5, quietZone_mm: 0, cutMargin_mm: 0 };
+  for (const [n, tagSize] of [
+    [200, 8],
+    [576, 4.5],
+    [1000, 3],
+    [2000, 2],
+  ] as Array<[number, number]>) {
+    const tags = makeTags(n);
+    let plan;
+    try {
+      plan = planSmallTagLayout(tags, tagSize, A4, dense);
+    } catch (e) {
+      console.log(`  (skipped ${n} @ ${tagSize}mm: ${(e as Error).message})`);
+      continue;
+    }
+    if (plan.pageCount !== 1) {
+      console.log(`  (skipped ${n} @ ${tagSize}mm: needs ${plan.pageCount} pages, not 1)`);
+      continue;
+    }
+    let svgLen = 0;
+    const sample = await bench(`svg ${n} tags on 1 page (${tagSize}mm)`, () => {
+      const s = renderPlanToSvg(plan, 0, BITS);
+      svgLen = s.length;
+      return s;
+    });
+    void sample;
+    const rects = n * FAKE_BITS.flat().filter(Boolean).length;
+    console.log(
+      `    └─ ~${rects.toLocaleString()} <rect> elements, SVG string ${(svgLen / 1024).toFixed(0)} KB`,
+    );
+  }
+
   console.log("\n=== PDF render (front only) ===");
   for (const n of [20, 200, 587]) {
     const tags = makeTags(n);
