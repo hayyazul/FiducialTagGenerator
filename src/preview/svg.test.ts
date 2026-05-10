@@ -75,4 +75,37 @@ describe("renderPlanToSvg", () => {
     expect(svg).not.toContain("<bad&family>");
     expect(svg).toContain("&lt;bad&amp;family&gt;");
   });
+
+  it("paints only what the PDF prints: no cream quiet zones, no dashed margin guide, grey cut lines", () => {
+    const opts: LayoutOptions = { pageMargin_mm: 5, quietZone_mm: 1, cutMargin_mm: 0 };
+    const plan = planSmallTagLayout([{ family: "tag36h11", id: 0 }], 20, square100, opts);
+    const svg = renderPlanToSvg(plan, 0);
+    expect(svg).not.toContain("#fff8d6");
+    expect(svg).not.toContain("stroke-dasharray");
+    expect(svg).not.toContain('stroke="#c00"');
+    expect(svg).toContain('stroke="#8c8c8c"'); // PDF cut-line grey
+  });
+
+  it("draws the four corner registration marks when there is a page margin", () => {
+    const opts: LayoutOptions = { pageMargin_mm: 5, quietZone_mm: 0, cutMargin_mm: 0 };
+    const plan = planSmallTagLayout([{ family: "tag36h11", id: 0 }], 20, square100, opts);
+    const svg = renderPlanToSvg(plan, 0);
+    // Two strokes per mark, four corners → eight reg-mark lines.
+    const regMarkLines = (svg.match(/stroke="#666666"/g) ?? []).length;
+    expect(regMarkLines).toBe(8);
+  });
+
+  it("omits registration marks when there is no page margin", () => {
+    const plan = planSmallTagLayout([{ family: "tag36h11", id: 0 }], 50, square100, minimalOpts);
+    const svg = renderPlanToSvg(plan, 0);
+    expect(svg).not.toContain('stroke="#666666"');
+  });
+
+  it("captions each tag with its family and id when the cut margin leaves room", () => {
+    const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 1, cutMargin_mm: 2 };
+    const plan = planSmallTagLayout([{ family: "tag36h11", id: 7 }], 20, square100, opts);
+    const svg = renderPlanToSvg(plan, 0, { imageHref: () => "data:image/png;base64,AAAA" });
+    expect(svg).toContain("tag36h11 #7");
+    expect(svg).toContain(`fill="#4d4d4d"`);
+  });
 });
