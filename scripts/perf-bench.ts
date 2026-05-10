@@ -14,7 +14,7 @@
 import { performance } from "node:perf_hooks";
 import { planSmallTagLayout } from "../src/layout/plan";
 import type { LayoutOptions, Paper, TagSpec } from "../src/layout/types";
-import { renderPlanToSvg } from "../src/preview/svg";
+import { renderPlanToSvg, type TagImageProvider } from "../src/preview/svg";
 import { renderPlan } from "../src/render/pdf";
 import type { BitsProvider } from "../src/families";
 
@@ -35,6 +35,17 @@ const FAKE_BITS: boolean[][] = Array.from({ length: EDGE }, (_, r) =>
 const BITS: BitsProvider = {
   bits(_family: string, _id: number) {
     return FAKE_BITS;
+  },
+};
+
+// Stand-in for the canvas-backed provider used in the browser: a fixed PNG
+// data URI roughly the size a real 8x8 tag PNG would base64 to. The point of
+// the SVG bench is to measure string-building / element count, not rasterising.
+const FAKE_TAG_PNG =
+  "data:image/png;base64," + "A".repeat(120);
+const IMAGES: TagImageProvider = {
+  imageHref(_family: string, _id: number) {
+    return FAKE_TAG_PNG;
   },
 };
 
@@ -94,7 +105,7 @@ async function run(): Promise<void> {
     const tags = makeTags(n);
     const plan = planSmallTagLayout(tags, 40, A4, OPTS);
     await bench(`svg ${label}`, () => {
-      renderPlanToSvg(plan, 0, BITS);
+      renderPlanToSvg(plan, 0, IMAGES);
     });
   }
 
@@ -104,14 +115,13 @@ async function run(): Promise<void> {
     const plan = planSmallTagLayout(tags, 40, A4, OPTS);
     await bench(`svg ALL pages, ${n} tags`, () => {
       let s = "";
-      for (let p = 0; p < plan.pageCount; p++) s += renderPlanToSvg(plan, p, BITS);
+      for (let p = 0; p < plan.pageCount; p++) s += renderPlanToSvg(plan, p, IMAGES);
       return s;
     });
   }
 
-  // Worst case: lots of tiny tags packed onto ONE page. The black-bit count
-  // (≈ rects emitted) is ~half of EDGE² per tag regardless of physical size,
-  // so this is where the SVG string and the DOM subtree get huge.
+  // Worst case: lots of tiny tags packed onto ONE page. With one <image> per
+  // tag the element count is just `n` (plus the cut grid), not n × ~half-EDGE².
   console.log("\n=== SVG preview render (MANY tags, ONE page) ===");
   const dense: LayoutOptions = { pageMargin_mm: 5, quietZone_mm: 0, cutMargin_mm: 0 };
   for (const [n, tagSize] of [
@@ -133,15 +143,13 @@ async function run(): Promise<void> {
       continue;
     }
     let svgLen = 0;
-    const sample = await bench(`svg ${n} tags on 1 page (${tagSize}mm)`, () => {
-      const s = renderPlanToSvg(plan, 0, BITS);
+    await bench(`svg ${n} tags on 1 page (${tagSize}mm)`, () => {
+      const s = renderPlanToSvg(plan, 0, IMAGES);
       svgLen = s.length;
       return s;
     });
-    void sample;
-    const rects = n * FAKE_BITS.flat().filter(Boolean).length;
     console.log(
-      `    └─ ~${rects.toLocaleString()} <rect> elements, SVG string ${(svgLen / 1024).toFixed(0)} KB`,
+      `    └─ ~${n.toLocaleString()} <image> elements, SVG string ${(svgLen / 1024).toFixed(0)} KB`,
     );
   }
 

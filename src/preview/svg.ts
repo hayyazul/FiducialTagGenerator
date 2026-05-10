@@ -1,7 +1,22 @@
-import type { BitsProvider } from "../families";
 import type { LayoutPlan } from "../layout/types";
 
-export type { BitsProvider };
+/**
+ * A source of per-tag bitmap images for the preview. Each tag is drawn as a
+ * single <image> whose href is a small PNG carrying one device pixel per bit
+ * (see `preview/tag-images`); the SVG scales it up with nearest-neighbour so
+ * the exact bit pattern stays crisp at any zoom. `null` means "not available
+ * yet" (mosaic still loading, unknown family/id) — the caller falls back to a
+ * labelled placeholder.
+ *
+ * Why an <image> per tag rather than one <rect> per black bit: a page packed
+ * with hundreds of tiny tags has tens of thousands of black bits. As <rect>
+ * elements that is a multi-megabyte SVG string and a DOM subtree the browser
+ * spends seconds parsing and painting on every edit. One <image> per tag
+ * collapses that to a few hundred nodes.
+ */
+export interface TagImageProvider {
+  imageHref(family: string, id: number): string | null;
+}
 
 /**
  * Render a single page of a LayoutPlan to an SVG string.
@@ -13,7 +28,7 @@ export type { BitsProvider };
 export function renderPlanToSvg(
   plan: LayoutPlan,
   page: number,
-  bitsProvider?: BitsProvider,
+  images?: TagImageProvider,
 ): string {
   const W = plan.paper.width_mm;
   const H = plan.paper.height_mm;
@@ -42,10 +57,11 @@ export function renderPlanToSvg(
         opts.quietZone_mm > 0
           ? `<rect x="${qzX}" y="${qzY}" width="${qzSize}" height="${qzSize}" fill="#fff8d6"/>`
           : "";
-      const bits = bitsProvider?.bits(p.tag.family, p.tag.id) ?? null;
-      const body = bits
-        ? renderBits(p.x_mm, yTop, tag, bits)
-        : renderPlaceholder(p.x_mm, yTop, tag, p.tag.family, p.tag.id);
+      const href = images?.imageHref(p.tag.family, p.tag.id) ?? null;
+      const body =
+        href !== null
+          ? renderTagImage(p.x_mm, yTop, tag, href)
+          : renderPlaceholder(p.x_mm, yTop, tag, p.tag.family, p.tag.id);
       return quietZoneRect + body;
     })
     .join("");
@@ -69,32 +85,21 @@ export function renderPlanToSvg(
   );
 }
 
-/** Render an `edge × edge` boolean grid as one black <rect> per black bit.
- *  `(x_mm, yTop_svg)` is the top-left of the tag bitmap in SVG coords. */
-function renderBits(
+/** Place a tag's bitmap PNG (`href`, one pixel per bit) into the `tagSize_mm`
+ *  square whose top-left in SVG coords is `(x_mm, yTop_svg)`. The PNG's
+ *  non-bit pixels are opaque white, so it doubles as the white underlay over
+ *  the cream quiet-zone rectangle. `image-rendering: pixelated` makes the
+ *  browser upscale with nearest-neighbour, keeping the bit grid crisp. */
+function renderTagImage(
   x_mm: number,
   yTop_svg: number,
   tagSize_mm: number,
-  bits: boolean[][],
+  href: string,
 ): string {
-  const edge = bits.length;
-  if (edge === 0) return "";
-  const cell = tagSize_mm / edge;
-  // White underlay so the tag bitmap area is opaque white between bits
-  // (it sits on top of the cream quiet-zone rectangle).
-  let s = `<rect x="${x_mm}" y="${yTop_svg}" width="${tagSize_mm}" height="${tagSize_mm}" fill="#fff"/>`;
-  for (let y = 0; y < edge; y++) {
-    const row = bits[y]!;
-    for (let x = 0; x < edge; x++) {
-      if (!row[x]) continue;
-      const sx = x_mm + x * cell;
-      const sy = yTop_svg + y * cell;
-      // Tiny epsilon overlap eliminates hairline seams when the SVG is
-      // scaled in the browser.
-      s += `<rect x="${sx}" y="${sy}" width="${cell + 0.01}" height="${cell + 0.01}" fill="#000"/>`;
-    }
-  }
-  return s;
+  return (
+    `<image x="${x_mm}" y="${yTop_svg}" width="${tagSize_mm}" height="${tagSize_mm}" ` +
+    `preserveAspectRatio="none" style="image-rendering:pixelated" href="${href}"/>`
+  );
 }
 
 function renderPlaceholder(

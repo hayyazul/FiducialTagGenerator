@@ -1,8 +1,15 @@
-import { getFamily, listFamilyNames, tagBitmapEdge_px, type TagFamilyDef } from "./families";
+import {
+  type BitsProvider,
+  getFamily,
+  listFamilyNames,
+  tagBitmapEdge_px,
+  type TagFamilyDef,
+} from "./families";
 import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { planSmallTagLayout } from "./layout/plan";
 import type { LayoutOptions, LayoutPlan, Paper, TagSpec } from "./layout/types";
-import { type BitsProvider, renderPlanToSvg } from "./preview/svg";
+import { renderPlanToSvg } from "./preview/svg";
+import { createTagImageProvider } from "./preview/tag-images";
 
 // pdf-lib (~180 KB gzipped) is the bulk of the app's JS and is only needed
 // when the user actually downloads. Pull it — and the renderer that depends
@@ -62,6 +69,10 @@ const bitsProvider: BitsProvider = {
     return loadedFamilies.get(family)?.bits(id) ?? null;
   },
 };
+
+// The PDF renderer draws tags as vector rects straight from `bitsProvider`;
+// the preview shows each tag as a PNG <image> via this rasterising view.
+const tagImageProvider = createTagImageProvider(bitsProvider);
 
 // Cached most recent valid plan, used by the Download button.
 let currentPlan: LayoutPlan | null = null;
@@ -249,7 +260,7 @@ function recompute(): void {
       return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
         plan,
         p,
-        bitsProvider,
+        tagImageProvider,
       )}</section>`;
     }).join("");
     const legend =
