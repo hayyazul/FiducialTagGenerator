@@ -226,9 +226,12 @@ function recompute(): void {
         bitsProvider,
       )}</section>`;
     }).join("");
+    const legend =
+      "Quiet zones in cream; cut lines in red; dashed line shows the page-margin guide.";
     out.innerHTML =
       `<p>${escapeHtml(summary)}</p>` +
       `<p style="color:#666;font-size:0.9em">${escapeHtml(detail)}</p>` +
+      `<p style="color:#888;font-size:0.85em">${escapeHtml(legend)}</p>` +
       (pages || "<p>(no pages)</p>");
     currentPlan = plan;
     currentFamily = effective.family;
@@ -254,60 +257,63 @@ function bootstrap(): void {
     .map((n) => `<option value="${n}">${n}</option>`)
     .join("");
   app.innerHTML = `
-    <h1>AprilTag PDF Generator <small style="font-weight:normal;color:#888">— layout preview</small></h1>
-    <p style="color:#666">PDF download arrives in Part 2. This view shows
-       layout, quiet zones (cream), cut lines (red), and the page-margin
-       guide (dashed). Real tag bitmaps are loaded from the family mosaic.</p>
-    <form id="form">
-      <fieldset>
-        <legend>Tags</legend>
-        <label>Family
-          <select id="family">${familyOptions}</select>
-        </label>
-        <label>Start ID <input id="startId" type="number" value="0" min="0"></label>
-        <label>Count <input id="count" type="number" value="20" min="1"></label>
-      </fieldset>
-      <fieldset>
-        <legend>Paper</legend>
-        <label>Paper
-          <select id="paper">
-            <option value="A4" selected>A4 (210 × 297 mm)</option>
-            <option value="Letter">US Letter (215.9 × 279.4 mm)</option>
-            <option value="Square100">100 × 100 mm</option>
-          </select>
-        </label>
-        <label>Page margin (mm) <input id="pageMargin" type="number" value="10" step="0.5" min="0"></label>
-      </fieldset>
-      <fieldset>
-        <legend>Tag</legend>
-        <label>Tag size (mm)
-          <input id="tagSize" type="number" value="40" step="0.5" min="1">
-        </label>
-        <span style="color:#888;font-size:0.85em">canonical (black-border) edge — what detectors expect</span>
-        <details style="margin-top:0.5rem">
-          <summary style="cursor:pointer">Advanced</summary>
-          <div style="margin-top:0.4rem">
-            <label><input type="checkbox" id="overrideAdvanced"> Override defaults</label>
-          </div>
-          <div style="margin-top:0.3rem">
-            <label>Quiet zone (mm) <input id="quietZone" type="number" step="0.1" min="0" disabled></label>
-            <span style="color:#888;font-size:0.85em">auto = 1 module = tagSize / bitmap edge</span>
-          </div>
-          <div>
-            <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled></label>
-            <span style="color:#888;font-size:0.85em">blade slack on each side of every cut</span>
-          </div>
-          <hr style="margin:0.5rem 0;border:0;border-top:1px solid #eee">
-          <div>
+    <div class="form-pane">
+        <h1>AprilTag PDF Generator</h1>
+        <form id="form">
+          <fieldset>
+            <legend>Tags</legend>
+            <label>Family
+              <select id="family">${familyOptions}</select>
+            </label>
+            <label>Start ID <input id="startId" type="number" value="0" min="0"></label>
+            <label>Count <input id="count" type="number" value="20" min="1"></label>
+          </fieldset>
+          <fieldset>
+            <legend>Paper</legend>
+            <label>Paper
+              <select id="paper">
+                <option value="A4" selected>A4 (210 × 297 mm)</option>
+                <option value="Letter">US Letter (215.9 × 279.4 mm)</option>
+                <option value="Square100">100 × 100 mm</option>
+              </select>
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Tag</legend>
+            <label>Tag size (mm)
+              <input id="tagSize" type="number" value="40" step="0.5" min="1">
+            </label>
+            <span style="color:#888;font-size:0.85em">canonical (black-border) edge — what detectors expect</span>
+            <details style="margin-top:0.5rem">
+              <summary style="cursor:pointer">Advanced</summary>
+              <div style="margin-top:0.4rem">
+                <label><input type="checkbox" id="overrideAdvanced"> Override defaults</label>
+              </div>
+              <div style="margin-top:0.3rem">
+                <label>Quiet zone (mm) <input id="quietZone" type="number" step="0.1" min="0" disabled></label>
+                <span style="color:#888;font-size:0.85em">auto = 1 module = tagSize / bitmap edge</span>
+              </div>
+              <div>
+                <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled></label>
+                <span style="color:#888;font-size:0.85em">blade slack on each side of every cut</span>
+              </div>
+              <div>
+                <label>Page margin (mm) <input id="pageMargin" type="number" value="10" step="0.5" min="0"></label>
+                <span style="color:#888;font-size:0.85em">unprintable border around each page</span>
+              </div>
+            </details>
+          </fieldset>
+          <fieldset>
+            <legend>Output</legend>
             <label><input type="checkbox" id="printLabelsOnBack"> Print tag info on backside</label>
             <span style="color:#888;font-size:0.85em">for double-sided printing (long-edge / horizontal flip)</span>
-          </div>
-        </details>
-      </fieldset>
-    </form>
-    <p><button id="downloadPdf" type="button" disabled>Download PDF</button></p>
-    <hr>
-    <div id="preview"></div>
+          </fieldset>
+        </form>
+        <p><button id="downloadPdf" type="button" disabled>Download PDF</button></p>
+    </div>
+    <div class="preview-pane">
+      <div id="preview"></div>
+    </div>
   `;
   const form = document.getElementById("form");
   form?.addEventListener("input", recompute);

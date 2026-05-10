@@ -60,7 +60,7 @@ export function renderPlanToSvg(
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" ` +
-    `width="100%" style="max-width:560px;background:#fff;border:1px solid #999;display:block">` +
+    `width="100%" style="background:#fff;border:1px solid #999;display:block">` +
     `<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>` +
     marginRect +
     tagShapes +
