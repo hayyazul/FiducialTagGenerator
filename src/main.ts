@@ -3,7 +3,10 @@ import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { planSmallTagLayout } from "./layout/plan";
 import type { LayoutOptions, LayoutPlan, Paper, TagSpec } from "./layout/types";
 import { type BitsProvider, renderPlanToSvg } from "./preview/svg";
-import { renderPlan } from "./render/pdf";
+
+// pdf-lib (~180 KB gzipped) is the bulk of the app's JS and is only needed
+// when the user actually downloads. Pull it — and the renderer that depends
+// on it — in a dynamic import so the initial page load stays tiny.
 
 // Convention: "Tag size" refers to the AprilTag *canonical* edge — the black
 // square that detection libraries expect — not the printed footprint. The
@@ -116,6 +119,7 @@ async function handleDownload(): Promise<void> {
   try {
     const printLabelsOnBack =
       (field("printLabelsOnBack") as HTMLInputElement).checked;
+    const { renderPlan } = await import("./render/pdf");
     const bytes = await renderPlan(currentPlan, bitsProvider, {
       printLabelsOnBack,
     });
