@@ -100,9 +100,47 @@ function syncAdvancedFields(s: FormState, familyDef: TagFamilyDef | undefined): 
   }
 }
 
-function renderError(message: string): void {
-  const out = document.getElementById("preview");
-  if (out) out.innerHTML = `<p style="color:#c00">${escapeHtml(message)}</p>`;
+/** Form fields that can carry an inline validation error. Each has a sibling
+ *  `<span class="field-error" id="${id}-err">` in the markup. */
+const ERROR_FIELD_IDS = [
+  "family",
+  "startId",
+  "count",
+  "tagSize",
+  "pageMargin",
+  "quietZone",
+  "cutMargin",
+] as const;
+
+/** Outline a field red and show `message` beside it; pass `null` to clear. */
+function setFieldError(id: string, message: string | null): void {
+  const el = document.getElementById(id);
+  const errEl = document.getElementById(`${id}-err`);
+  if (!el || !errEl) return;
+  el.classList.toggle("invalid", message !== null);
+  errEl.textContent = message ?? "";
+}
+
+function clearFieldErrors(): void {
+  for (const id of ERROR_FIELD_IDS) setFieldError(id, null);
+}
+
+/** Status line under the Download button: a short note, optionally flagged as
+ *  a problem (red). */
+function showInfo(text: string, isProblem = false): void {
+  const info = document.getElementById("info");
+  if (info) {
+    info.innerHTML = `<p${isProblem ? ' class="problem"' : ""}>${escapeHtml(text)}</p>`;
+  }
+}
+
+/** Clear the preview and the cached plan after a validation failure. The
+ *  caller has already flagged the offending field(s); `note` is the status
+ *  line shown under the Download button. */
+function failPreview(note: string, isProblem = true): void {
+  const preview = document.getElementById("preview");
+  if (preview) preview.innerHTML = "";
+  showInfo(note, isProblem);
   currentPlan = null;
   currentFamily = null;
   syncDownloadButton();
@@ -148,15 +186,17 @@ async function handleDownload(): Promise<void> {
     a.remove();
     URL.revokeObjectURL(url);
   } catch (e) {
-    renderError(`PDF render failed: ${e instanceof Error ? e.message : String(e)}`);
+    showInfo(`PDF render failed: ${e instanceof Error ? e.message : String(e)}`, true);
   } finally {
     syncDownloadButton();
   }
 }
 
 function recompute(): void {
-  const out = document.getElementById("preview");
-  if (!out) return;
+  const preview = document.getElementById("preview");
+  if (!preview) return;
+  clearFieldErrors();
+
   const s = readForm();
   const familyDef = getFamily(s.family);
   syncAdvancedFields(s, familyDef);
@@ -178,34 +218,53 @@ function recompute(): void {
     );
   }
 
-  if (
-    !Number.isFinite(effective.count) ||
-    !Number.isFinite(effective.tagSize_mm) ||
-    effective.count < 1 ||
-    effective.tagSize_mm <= 0
-  ) {
-    out.innerHTML = `<p>Fill in count and tag size to see a preview.</p>`;
-    return;
-  }
-
   if (!familyDef) {
-    renderError(`Unknown tag family "${s.family}".`);
+    setFieldError("family", "Pick a tag family.");
+    failPreview("Pick a tag family to see a preview.");
     return;
   }
 
-  // Bounds check: the family only has validTagCount valid tag IDs.
-  const lastId = effective.startId + effective.count - 1;
-  if (effective.startId < 0) {
-    renderError(`Start ID must be ≥ 0 (got ${effective.startId}).`);
+  let bad = false;
+  if (!Number.isFinite(effective.count) || effective.count < 1) {
+    setFieldError("count", "Enter a whole number, 1 or more.");
+    bad = true;
+  }
+  if (!Number.isFinite(effective.tagSize_mm) || effective.tagSize_mm <= 0) {
+    setFieldError("tagSize", "Enter a size in mm greater than 0.");
+    bad = true;
+  }
+  if (!Number.isFinite(effective.pageMargin_mm) || effective.pageMargin_mm < 0) {
+    setFieldError("pageMargin", "Enter 0 or more.");
+    bad = true;
+  }
+  if (effective.overrideAdvanced) {
+    if (!Number.isFinite(effective.quietZone_mm) || effective.quietZone_mm < 0) {
+      setFieldError("quietZone", "Enter 0 or more.");
+      bad = true;
+    }
+    if (!Number.isFinite(effective.cutMargin_mm) || effective.cutMargin_mm < 0) {
+      setFieldError("cutMargin", "Enter 0 or more.");
+      bad = true;
+    }
+  }
+  if (bad) {
+    failPreview("Fill in the highlighted fields to see a preview.");
     return;
   }
+
+  if (effective.startId < 0) {
+    setFieldError("startId", "Start ID can't be negative.");
+    failPreview("Start ID can't be negative.");
+    return;
+  }
+  const lastId = effective.startId + effective.count - 1;
   if (lastId >= familyDef.validTagCount) {
-    renderError(
-      `Requested ids ${effective.startId}..${lastId} exceed family ${familyDef.name}, ` +
-        `which has only ${familyDef.validTagCount} valid tags (max id ${
-          familyDef.validTagCount - 1
-        }). Reduce Count or Start ID.`,
-    );
+    const msg =
+      `This family has ${familyDef.validTagCount} tags (IDs 0–${familyDef.validTagCount - 1}); ` +
+      `you asked for IDs up to ${lastId}.`;
+    setFieldError("startId", msg);
+    setFieldError("count", msg);
+    failPreview("Some requested tag IDs don't exist in this family.");
     return;
   }
 
@@ -220,42 +279,55 @@ function recompute(): void {
     cutMargin_mm: effective.cutMargin_mm,
   };
 
+  let plan: LayoutPlan;
   try {
-    const plan = planSmallTagLayout(tags, effective.tagSize_mm, paper, options);
-    const loaded = loadedFamilies.has(effective.family);
-    const footprint =
-      effective.tagSize_mm + 2 * (effective.quietZone_mm + effective.cutMargin_mm);
-    const summary =
-      `${plan.placements.length} tag${plan.placements.length === 1 ? "" : "s"} ` +
-      `across ${plan.pageCount} page${plan.pageCount === 1 ? "" : "s"} on ` +
-      `${paper.width_mm} × ${paper.height_mm} mm paper.${loaded ? "" : " (Loading bitmaps…)"}`;
-    const detail =
-      `Canonical tag size ${effective.tagSize_mm.toFixed(2)} mm; ` +
-      `quiet zone ${effective.quietZone_mm.toFixed(2)} mm; ` +
-      `cut margin ${effective.cutMargin_mm.toFixed(2)} mm; ` +
-      `printed cell ${footprint.toFixed(2)} mm.`;
-    const pages = Array.from({ length: plan.pageCount }, (_, p) => {
+    plan = planSmallTagLayout(tags, effective.tagSize_mm, paper, options);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (/does not fit on paper|no tags fit/i.test(message)) {
+      const tooBig = "Too big for this paper — shrink the tag size or reduce the page margin.";
+      setFieldError("tagSize", tooBig);
+      setFieldError("pageMargin", tooBig);
+      if (effective.overrideAdvanced) {
+        setFieldError("quietZone", tooBig);
+        setFieldError("cutMargin", tooBig);
+      }
+      failPreview("These tags don't fit on the chosen paper.");
+    } else {
+      failPreview(`Couldn't lay out the tags: ${message}`);
+    }
+    return;
+  }
+
+  const loaded = loadedFamilies.has(effective.family);
+  const footprint =
+    effective.tagSize_mm + 2 * (effective.quietZone_mm + effective.cutMargin_mm);
+  const summary =
+    `${plan.placements.length} tag${plan.placements.length === 1 ? "" : "s"} ` +
+    `across ${plan.pageCount} page${plan.pageCount === 1 ? "" : "s"} on ` +
+    `${paper.width_mm} × ${paper.height_mm} mm paper.${loaded ? "" : " (Loading bitmaps…)"}`;
+  const detail =
+    `Tag size ${effective.tagSize_mm.toFixed(2)} mm; ` +
+    `quiet zone ${effective.quietZone_mm.toFixed(2)} mm; ` +
+    `cut margin ${effective.cutMargin_mm.toFixed(2)} mm; ` +
+    `printed cell ${footprint.toFixed(2)} mm.`;
+  const info = document.getElementById("info");
+  if (info) {
+    info.innerHTML =
+      `<p class="summary">${escapeHtml(summary)}</p>` +
+      `<p>${escapeHtml(detail)}</p>`;
+  }
+  preview.innerHTML =
+    Array.from({ length: plan.pageCount }, (_, p) => {
       return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
         plan,
         p,
         tagImageProvider,
       )}</section>`;
-    }).join("");
-    const legend =
-      "Quiet zones in cream; cut lines in red; dashed line shows the page-margin guide.";
-    out.innerHTML =
-      `<p>${escapeHtml(summary)}</p>` +
-      `<p style="color:#666;font-size:0.9em">${escapeHtml(detail)}</p>` +
-      `<p style="color:#888;font-size:0.85em">${escapeHtml(legend)}</p>` +
-      (pages || "<p>(no pages)</p>");
-    currentPlan = plan;
-    currentFamily = effective.family;
-    syncDownloadButton();
-  } catch (e) {
-    renderError(
-      `Cannot lay out tags: ${e instanceof Error ? e.message : String(e)}`,
-    );
-  }
+    }).join("") || `<p style="color:#888">No pages — add some tags.</p>`;
+  currentPlan = plan;
+  currentFamily = effective.family;
+  syncDownloadButton();
 }
 
 function escapeHtml(s: string): string {
@@ -278,10 +350,10 @@ function bootstrap(): void {
           <fieldset>
             <legend>Tags</legend>
             <label>Family
-              <select id="family">${familyOptions}</select>
+              <select id="family">${familyOptions}</select><span class="field-error" id="family-err"></span>
             </label>
-            <label>Start ID <input id="startId" type="number" value="0" min="0"></label>
-            <label>Count <input id="count" type="number" value="20" min="1"></label>
+            <label>Start ID <input id="startId" type="number" value="0" min="0"><span class="field-error" id="startId-err"></span></label>
+            <label>Count <input id="count" type="number" value="20" min="1"><span class="field-error" id="count-err"></span></label>
           </fieldset>
           <fieldset>
             <legend>Paper</legend>
@@ -296,7 +368,7 @@ function bootstrap(): void {
           <fieldset>
             <legend>Tag</legend>
             <label>Tag size (mm)
-              <input id="tagSize" type="number" value="40" step="0.5" min="1">
+              <input id="tagSize" type="number" value="40" step="0.5" min="1"><span class="field-error" id="tagSize-err"></span>
             </label>
             <span style="color:#888;font-size:0.85em">canonical (black-border) edge — what detectors expect</span>
             <details style="margin-top:0.5rem">
@@ -305,15 +377,15 @@ function bootstrap(): void {
                 <label><input type="checkbox" id="overrideAdvanced"> Override defaults</label>
               </div>
               <div style="margin-top:0.3rem">
-                <label>Quiet zone (mm) <input id="quietZone" type="number" step="0.1" min="0" disabled></label>
+                <label>Quiet zone (mm) <input id="quietZone" type="number" step="0.1" min="0" disabled><span class="field-error" id="quietZone-err"></span></label>
                 <span style="color:#888;font-size:0.85em">auto = 1 module = tagSize / bitmap edge</span>
               </div>
               <div>
-                <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled></label>
+                <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled><span class="field-error" id="cutMargin-err"></span></label>
                 <span style="color:#888;font-size:0.85em">blade slack on each side of every cut</span>
               </div>
               <div>
-                <label>Page margin (mm) <input id="pageMargin" type="number" value="10" step="0.5" min="0"></label>
+                <label>Page margin (mm) <input id="pageMargin" type="number" value="10" step="0.5" min="0"><span class="field-error" id="pageMargin-err"></span></label>
                 <span style="color:#888;font-size:0.85em">unprintable border around each page</span>
               </div>
             </details>
@@ -325,6 +397,7 @@ function bootstrap(): void {
           </fieldset>
         </form>
         <p><button id="downloadPdf" type="button" disabled>Download PDF</button></p>
+        <div id="info"></div>
     </div>
     <div class="preview-pane">
       <div id="preview"></div>
