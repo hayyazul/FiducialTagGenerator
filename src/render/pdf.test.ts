@@ -90,6 +90,15 @@ describe("renderPlan", () => {
     expect(reloaded.getPageCount()).toBe(1 + plan.pageCount);
   });
 
+  it("renders a valid PDF with in-quiet-zone labels and no extra pages", async () => {
+    const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts);
+    const bytes = await renderPlan(plan, fakeBits, { printLabelsInQuietZone: true });
+    const reloaded = await PDFDocument.load(bytes);
+    // The captions go inside the existing layout pages — no page added.
+    expect(reloaded.getPageCount()).toBe(1 + plan.pageCount);
+    expect(bytes.length).toBeGreaterThan(100);
+  });
+
   it("renders cleanly when tag IDs are non-contiguous", async () => {
     // Arbitrary scattered ids (the future 'arbitrary tags' UI option).
     const tags: TagSpec[] = [13, 0, 587 - 1, 200, 42].map((id) => ({

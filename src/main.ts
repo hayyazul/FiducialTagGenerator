@@ -209,9 +209,12 @@ async function handleDownload(): Promise<void> {
   try {
     const printLabelsOnBack =
       (field("printLabelsOnBack") as HTMLInputElement).checked;
+    const printLabelsInQuietZone =
+      (field("printLabelsInQuietZone") as HTMLInputElement).checked;
     const { renderPlan } = await import("./render/pdf");
     const bytes = await renderPlan(currentPlan, bitsProvider, {
       printLabelsOnBack,
+      printLabelsInQuietZone,
     });
     // Copy into a fresh ArrayBuffer-backed Uint8Array; pdf-lib's return type
     // is `Uint8Array<ArrayBufferLike>` which Blob's typing rejects directly.
@@ -362,12 +365,17 @@ function recompute(): void {
       `<p class="summary">${escapeHtml(summary)}</p>` +
       `<p>${escapeHtml(detail)}</p>`;
   }
+  const previewOpts = {
+    printLabelsInQuietZone:
+      (field("printLabelsInQuietZone") as HTMLInputElement).checked,
+  };
   preview.innerHTML =
     Array.from({ length: plan.pageCount }, (_, p) => {
       return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
         plan,
         p,
         tagImageProvider,
+        previewOpts,
       )}</section>`;
     }).join("") || `<p style="color:#888">No pages — add some tags.</p>`;
   currentPlan = plan;
@@ -441,8 +449,14 @@ function bootstrap(): void {
           </fieldset>
           <fieldset>
             <legend>Output</legend>
-            <label><input type="checkbox" id="printLabelsOnBack"> Print tag info on backside</label>
-            <span style="color:#888;font-size:0.85em">for double-sided printing (long-edge / horizontal flip)</span>
+            <div>
+              <label><input type="checkbox" id="printLabelsOnBack"> Print tag info on backside</label>
+              <span style="color:#888;font-size:0.85em">for double-sided printing (long-edge / horizontal flip)</span>
+            </div>
+            <div style="margin-top:0.3rem">
+              <label><input type="checkbox" id="printLabelsInQuietZone"> Print tag info in the quiet zone (front)</label>
+              <span style="color:#888;font-size:0.85em">stays on the cut-out tag; small print — best at ~20 mm tags or larger</span>
+            </div>
           </fieldset>
         </form>
         <p><button id="downloadPdf" type="button" disabled>Download PDF</button></p>

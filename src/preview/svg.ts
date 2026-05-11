@@ -1,4 +1,5 @@
 import type { LayoutPlan } from "../layout/types";
+import { tagCaptionLine } from "../tag-caption";
 
 /**
  * A source of per-tag bitmap images for the preview. Each tag is drawn as a
@@ -24,9 +25,20 @@ export interface TagImageProvider {
 const CUT_LINE = "#8c8c8c"; // rgb(0.55)
 const REG_MARK = "#666666"; // rgb(0.4)
 const TAG_LABEL = "#4d4d4d"; // rgb(0.3)
+const QUIET_LABEL = "#000000"; // rgb(0) — the in-quiet-zone caption
+
+/** Optional, render-only embellishments — they don't change the layout. */
+export interface PreviewOptions {
+  /** Mirror the PDF's "print tag info in the quiet zone" output option:
+   *  draw the "family #id · size" caption in each tag's bottom quiet-zone
+   *  band. Default: false. */
+  printLabelsInQuietZone?: boolean;
+}
 
 /**
- * Render a single page of a LayoutPlan to an SVG string.
+ * Render a single page of a LayoutPlan to an SVG string. With
+ * `opts.printLabelsInQuietZone` the preview also shows the in-quiet-zone
+ * caption, matching a PDF rendered with the same option on.
  *
  * SVG uses top-left origin; the layout engine uses bottom-left. We
  * translate coordinates at this boundary rather than applying an SVG
@@ -36,6 +48,7 @@ export function renderPlanToSvg(
   plan: LayoutPlan,
   page: number,
   images?: TagImageProvider,
+  opts: PreviewOptions = {},
 ): string {
   const W = plan.paper.width_mm;
   const H = plan.paper.height_mm;
@@ -53,7 +66,14 @@ export function renderPlanToSvg(
         href !== null
           ? renderTagImage(p.x_mm, yTop, tag, href)
           : renderPlaceholder(p.x_mm, yTop, tag, p.tag.family, p.tag.id);
-      return body + renderTagLabel(plan, p.x_mm, p.y_mm, tag, p.tag.family, p.tag.id, flipY);
+      const quietLabel = opts.printLabelsInQuietZone
+        ? renderQuietZoneLabel(plan, p.x_mm, p.y_mm, tag, p.tag.family, p.tag.id, flipY)
+        : "";
+      return (
+        body +
+        renderTagLabel(plan, p.x_mm, p.y_mm, tag, p.tag.family, p.tag.id, flipY) +
+        quietLabel
+      );
     })
     .join("");
 
@@ -130,6 +150,33 @@ function renderTagLabel(
     `<text x="${x_mm + tagSize_mm / 2}" y="${flipY(baseline_mm)}" ` +
     `font-size="${fontSize_mm}" text-anchor="middle" fill="${TAG_LABEL}" ` +
     `font-family="monospace">${escapeXml(`${family} #${id}`)}</text>`
+  );
+}
+
+/** The "<family> #<id> · <size>" caption `render/pdf` sets inside each tag's
+ *  bottom quiet-zone band when the "print tag info in the quiet zone" output
+ *  option is on. Sized to ~0.6× the quiet-zone width and shrunk to fit the
+ *  tag's own width; omitted when there is no quiet zone. Mirrors
+ *  `drawQuietZoneLabel`. */
+function renderQuietZoneLabel(
+  plan: LayoutPlan,
+  x_mm: number,
+  y_mm: number,
+  tagSize_mm: number,
+  family: string,
+  id: number,
+  flipY: (y_mm: number) => number,
+): string {
+  const Q = plan.options.quietZone_mm;
+  if (Q <= 0) return "";
+  const text = tagCaptionLine(family, id, tagSize_mm);
+  // Courier advance = 0.6 em per glyph; keep the line within the tag's width.
+  const fontSize_mm = Math.max(0.18, Math.min(Q * 0.6, tagSize_mm / (0.6 * text.length)));
+  const baseline_mm = y_mm - Q + 0.28 * Q;
+  return (
+    `<text x="${x_mm + tagSize_mm / 2}" y="${flipY(baseline_mm)}" ` +
+    `font-size="${fontSize_mm}" text-anchor="middle" fill="${QUIET_LABEL}" ` +
+    `font-family="monospace">${escapeXml(text)}</text>`
   );
 }
 

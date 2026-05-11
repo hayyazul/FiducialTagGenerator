@@ -108,4 +108,26 @@ describe("renderPlanToSvg", () => {
     expect(svg).toContain("tag36h11 #7");
     expect(svg).toContain(`fill="#4d4d4d"`);
   });
+
+  it("sets the family/id/size caption in the quiet zone when that option is on", () => {
+    const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 1, cutMargin_mm: 0 };
+    const plan = planSmallTagLayout([{ family: "tag36h11", id: 5 }], 20, square100, opts);
+    const provider = { imageHref: () => "data:image/png;base64,AAAA" };
+    expect(renderPlanToSvg(plan, 0, provider)).not.toContain("tag36h11 #5 · 20 mm");
+    const svg = renderPlanToSvg(plan, 0, provider, { printLabelsInQuietZone: true });
+    expect(svg).toContain("tag36h11 #5 · 20 mm");
+    expect(svg).toContain(`fill="#000000"`);
+  });
+
+  it("draws no quiet-zone caption when there is no quiet zone, even with the option on", () => {
+    const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 0, cutMargin_mm: 0 };
+    const plan = planSmallTagLayout([{ family: "tag36h11", id: 5 }], 20, square100, opts);
+    const svg = renderPlanToSvg(
+      plan,
+      0,
+      { imageHref: () => "data:image/png;base64,AAAA" },
+      { printLabelsInQuietZone: true },
+    );
+    expect(svg).not.toContain("tag36h11 #5 · 20 mm");
+  });
 });

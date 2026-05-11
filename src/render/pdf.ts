@@ -7,6 +7,7 @@ import {
 } from "pdf-lib";
 import type { BitsProvider } from "../families";
 import type { LayoutPlan, Placement } from "../layout/types";
+import { formatTagSize, tagCaptionLine } from "../tag-caption";
 
 /**
  * Convert a LayoutPlan into a print-ready PDF byte stream.
@@ -20,6 +21,10 @@ import type { LayoutPlan, Placement } from "../layout/types";
  * axis (long-edge / horizontal-flip duplex). Printing the document
  * double-sided produces sheets where each cut tag carries family/id text
  * on its reverse.
+ *
+ * With `printLabelsInQuietZone: true`, the same caption is set inside each
+ * tag's bottom quiet-zone band on the front, so the cut-out tag carries its
+ * own identification without needing a duplex print.
  *
  * Tags are drawn as filled vector rectangles, one per black bit, never as
  * rasterized images. Cut lines, registration marks, and per-tag labels are
@@ -41,6 +46,11 @@ export interface RenderOptions {
    *  family/id printed where the tag's reverse will land under long-edge
    *  duplex printing. Default: false. */
   printLabelsOnBack?: boolean;
+  /** Set a one-line "family #id · size" caption inside each tag's bottom
+   *  quiet-zone band on the front layout page, so the caption stays on the
+   *  tag once it is cut out. Sized to the quiet zone (small — best at ~20 mm
+   *  tags or larger). Default: false. */
+  printLabelsInQuietZone?: boolean;
 }
 
 export async function renderPlan(
@@ -49,6 +59,7 @@ export async function renderPlan(
   options: RenderOptions = {},
 ): Promise<Uint8Array> {
   const printBack = options.printLabelsOnBack ?? false;
+  const labelInQuietZone = options.printLabelsInQuietZone ?? false;
   const doc = await PDFDocument.create();
   doc.setTitle(`AprilTag layout (${plan.placements.length} tags)`);
   doc.setProducer("AprilTagPDFGenerator");
@@ -57,7 +68,7 @@ export async function renderPlan(
 
   drawCalibrationPage(doc, font);
   for (let p = 0; p < plan.pageCount; p++) {
-    drawTagPage(doc, font, plan, p, bits);
+    drawTagPage(doc, font, plan, p, bits, labelInQuietZone);
     if (printBack) drawBackPage(doc, font, fontBold, plan, p);
   }
   return doc.save();
@@ -191,6 +202,7 @@ function drawTagPage(
   plan: LayoutPlan,
   pageIndex: number,
   bits: BitsProvider,
+  labelInQuietZone: boolean,
 ): void {
   const page = doc.addPage([mm(plan.paper.width_mm), mm(plan.paper.height_mm)]);
 
@@ -209,9 +221,41 @@ function drawTagPage(
   for (const placement of plan.placements) {
     if (placement.page !== pageIndex) continue;
     drawTag(page, font, placement, plan, bits);
+    if (labelInQuietZone) drawQuietZoneLabel(page, font, placement, plan);
   }
 
   drawPageFooter(page, font, plan, pageIndex, false);
+}
+
+/**
+ * Set the tag's caption inside its bottom quiet-zone band on the front, so it
+ * survives on the cut-out tag. The text occupies the lower part of the band
+ * (~0.6× the band height), leaving the strip next to the bitmap clear; it is
+ * shrunk to fit the tag's own width so it never reaches a neighbour's cut
+ * line. This does eat into the otherwise-clear quiet zone, hence opt-in.
+ */
+function drawQuietZoneLabel(
+  page: PDFPage,
+  font: PDFFont,
+  placement: Placement,
+  plan: LayoutPlan,
+): void {
+  const Q_mm = plan.options.quietZone_mm;
+  if (Q_mm <= 0) return;
+  const tagSize_mm = plan.tagSize_mm;
+  const text = tagCaptionLine(placement.tag.family, placement.tag.id, tagSize_mm);
+  // Courier's advance width is 0.6 em per glyph, so a line of `n` glyphs is
+  // `0.6 · size · n` wide; pick the largest size that is both ≤ 0.6× the
+  // quiet-zone band and narrow enough to stay within the tag's width.
+  const natural_mm = Q_mm * 0.6;
+  const widthLimited_mm = tagSize_mm / (0.6 * text.length);
+  const fontPt = Math.max(0.5, mm(Math.min(natural_mm, widthLimited_mm)));
+  const w = font.widthOfTextAtSize(text, fontPt);
+  const x = mm(placement.x_mm + tagSize_mm / 2) - w / 2;
+  // Baseline ~28 % up from the cut line, putting the glyph body in the lower
+  // ~60 % of the band.
+  const y = mm(placement.y_mm - Q_mm + Q_mm * 0.28);
+  page.drawText(text, { x, y, font, size: fontPt, color: rgb(0, 0, 0) });
 }
 
 function drawRegistrationCorners(page: PDFPage, plan: LayoutPlan): void {
@@ -380,7 +424,7 @@ function drawBackLabel(
   const lines: Array<{ text: string; bold: boolean }> = [
     { text: placement.tag.family, bold: false },
     { text: `#${placement.tag.id}`, bold: true },
-    { text: formatSize(size_mm), bold: false },
+    { text: formatTagSize(size_mm), bold: false },
   ];
 
   // Each line takes ~18 % of tag size in font height; line spacing is 1.4×
@@ -405,12 +449,6 @@ function drawBackLabel(
       color: rgb(0, 0, 0),
     });
   }
-}
-
-function formatSize(size_mm: number): string {
-  // 40.00 → "40 mm"; 40.5 stays; 40.123 → "40.12 mm".
-  const rounded = Math.round(size_mm * 100) / 100;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toString()} mm`;
 }
 
 // -------------------- footer --------------------
