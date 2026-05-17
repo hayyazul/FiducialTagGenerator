@@ -52,7 +52,7 @@ export function renderPlanToSvg(
 ): string {
   const W = plan.paper.width_mm;
   const H = plan.paper.height_mm;
-  const tag = plan.tagSize_mm;
+  const tile = plan.tileSize_mm;
   const flipY = (y_mm: number): number => H - y_mm;
 
   const placements = plan.placements.filter((p) => p.page === page);
@@ -60,18 +60,18 @@ export function renderPlanToSvg(
 
   const tagShapes = placements
     .map((p) => {
-      const yTop = flipY(p.y_mm + tag);
+      const yTop = flipY(p.y_mm + tile);
       const href = images?.imageHref(p.tag.family, p.tag.id) ?? null;
       const body =
         href !== null
-          ? renderTagImage(p.x_mm, yTop, tag, href)
-          : renderPlaceholder(p.x_mm, yTop, tag, p.tag.family, p.tag.id);
+          ? renderTagImage(p.x_mm, yTop, tile, href)
+          : renderPlaceholder(p.x_mm, yTop, tile, p.tag.family, p.tag.id);
       const quietLabel = opts.printLabelsInQuietZone
-        ? renderQuietZoneLabel(plan, p.x_mm, p.y_mm, tag, p.tag.family, p.tag.id, flipY)
+        ? renderQuietZoneLabel(plan, p.x_mm, p.y_mm, tile, p.tag.family, p.tag.id, flipY)
         : "";
       return (
         body +
-        renderTagLabel(plan, p.x_mm, p.y_mm, tag, p.tag.family, p.tag.id, flipY) +
+        renderTagLabel(plan, p.x_mm, p.y_mm, tile, p.tag.family, p.tag.id, flipY) +
         quietLabel
       );
     })
@@ -96,7 +96,7 @@ export function renderPlanToSvg(
   );
 }
 
-/** Place a tag's bitmap PNG (`href`, one pixel per bit) into the `tagSize_mm`
+/** Place a tag's bitmap PNG (`href`, one pixel per bit) into the `tile_mm`
  *  square whose top-left in SVG coords is `(x_mm, yTop_svg)`. The PNG's
  *  non-bit pixels are opaque white, so the quiet zone around the bits reads as
  *  blank paper — exactly as it prints. `image-rendering: pixelated` makes the
@@ -104,11 +104,11 @@ export function renderPlanToSvg(
 function renderTagImage(
   x_mm: number,
   yTop_svg: number,
-  tagSize_mm: number,
+  tile_mm: number,
   href: string,
 ): string {
   return (
-    `<image x="${x_mm}" y="${yTop_svg}" width="${tagSize_mm}" height="${tagSize_mm}" ` +
+    `<image x="${x_mm}" y="${yTop_svg}" width="${tile_mm}" height="${tile_mm}" ` +
     `preserveAspectRatio="none" style="image-rendering:pixelated" href="${href}"/>`
   );
 }
@@ -116,14 +116,14 @@ function renderTagImage(
 function renderPlaceholder(
   x_mm: number,
   yTop_svg: number,
-  tagSize_mm: number,
+  tile_mm: number,
   family: string,
   id: number,
 ): string {
-  const labelSize = Math.max(1.2, tagSize_mm * 0.18);
+  const labelSize = Math.max(1.2, tile_mm * 0.18);
   return (
-    `<rect x="${x_mm}" y="${yTop_svg}" width="${tagSize_mm}" height="${tagSize_mm}" fill="#222"/>` +
-    `<text x="${x_mm + tagSize_mm / 2}" y="${yTop_svg + tagSize_mm / 2}" ` +
+    `<rect x="${x_mm}" y="${yTop_svg}" width="${tile_mm}" height="${tile_mm}" fill="#222"/>` +
+    `<text x="${x_mm + tile_mm / 2}" y="${yTop_svg + tile_mm / 2}" ` +
     `font-size="${labelSize}" text-anchor="middle" dominant-baseline="central" ` +
     `fill="#fff" font-family="monospace">${escapeXml(`${family}#${id}`)}</text>`
   );
@@ -136,7 +136,7 @@ function renderTagLabel(
   plan: LayoutPlan,
   x_mm: number,
   y_mm: number,
-  tagSize_mm: number,
+  tile_mm: number,
   family: string,
   id: number,
   flipY: (y_mm: number) => number,
@@ -147,7 +147,7 @@ function renderTagLabel(
   // Matches `render/pdf`'s baseline: y_mm − quietZone − C + 0.15·C.
   const baseline_mm = y_mm - plan.options.quietZone_mm - C + 0.15 * C;
   return (
-    `<text x="${x_mm + tagSize_mm / 2}" y="${flipY(baseline_mm)}" ` +
+    `<text x="${x_mm + tile_mm / 2}" y="${flipY(baseline_mm)}" ` +
     `font-size="${fontSize_mm}" text-anchor="middle" fill="${TAG_LABEL}" ` +
     `font-family="monospace">${escapeXml(`${family} #${id}`)}</text>`
   );
@@ -162,19 +162,19 @@ function renderQuietZoneLabel(
   plan: LayoutPlan,
   x_mm: number,
   y_mm: number,
-  tagSize_mm: number,
+  tile_mm: number,
   family: string,
   id: number,
   flipY: (y_mm: number) => number,
 ): string {
   const Q = plan.options.quietZone_mm;
   if (Q <= 0) return "";
-  const text = tagCaptionLine(family, id, tagSize_mm);
+  const text = tagCaptionLine(family, id, plan.tagSize_mm);
   // Courier advance = 0.6 em per glyph; keep the line within the tag's width.
-  const fontSize_mm = Math.max(0.18, Math.min(Q * 0.6, tagSize_mm / (0.6 * text.length)));
+  const fontSize_mm = Math.max(0.18, Math.min(Q * 0.6, tile_mm / (0.6 * text.length)));
   const baseline_mm = y_mm - Q + 0.28 * Q;
   return (
-    `<text x="${x_mm + tagSize_mm / 2}" y="${flipY(baseline_mm)}" ` +
+    `<text x="${x_mm + tile_mm / 2}" y="${flipY(baseline_mm)}" ` +
     `font-size="${fontSize_mm}" text-anchor="middle" fill="${QUIET_LABEL}" ` +
     `font-family="monospace">${escapeXml(text)}</text>`
   );

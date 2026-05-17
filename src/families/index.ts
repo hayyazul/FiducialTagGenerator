@@ -8,9 +8,9 @@
  *     left edge of one tile to the next is `tileSize_px + 1`).
  *   - Tile (col, row) holds tag id = row * cols + col, with row 0 at the
  *     top, col 0 at the left.
- *   - Each tile already includes a 1-module quiet zone on every side; the
- *     `embeddedQuietZone_px` field records that padding so the tag bitmap
- *     proper can be extracted.
+ *   - The tile is the tag bitmap exactly as it should be printed; any
+ *     white border the family ships with (e.g. tag36h11's outer ring) is
+ *     part of the tag, not a quiet zone to strip.
  *
  * Adding a new family is one entry in `FAMILIES` plus dropping its mosaic
  * into `public/resources/`. No other code needs to change.
@@ -32,8 +32,17 @@ export interface BitsProvider {
 export interface TagFamilyDef {
   name: string;
   mosaicPath: string;
+  /** Side length of one tile in mosaic pixels, equal to the tag bitmap's
+   *  side length in modules (one pixel per module). */
   tileSize_px: number;
-  embeddedQuietZone_px: number;
+  /** AprilTag-spec "tag size" in modules — the distance between detection
+   *  corners, i.e. the length of the edge between the white border and the
+   *  black border. For families whose tile already contains a white outer
+   *  ring (tag36h11) this is `tileSize_px − 2`; for "Standard" / "Custom"
+   *  families whose outer modules carry data, it is smaller still. The UI's
+   *  Tag size input is interpreted in these units, then scaled to compute
+   *  the printed tile dimension. */
+  widthAtBorder_modules: number;
   /** Number of valid tag IDs in the family. The mosaic may contain extra
    *  blank tiles to round out a rectangular grid; ids ≥ this number do not
    *  correspond to real tags. */
@@ -51,7 +60,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     name: "tag36h11",
     mosaicPath: `${import.meta.env.BASE_URL}resources/tag36h11_mosaic.png`,
     tileSize_px: 10,
-    embeddedQuietZone_px: 1,
+    widthAtBorder_modules: 8,
     validTagCount: 587,
     group: "Classic",
   },
@@ -59,7 +68,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     name: "tagStandard41h12",
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard41h12_mosaic.png`,
     tileSize_px: 9,
-    embeddedQuietZone_px: 1,
+    widthAtBorder_modules: 5,
     validTagCount: 2115,
     group: "Standard",
   },
@@ -67,7 +76,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     name: "tagStandard52h13",
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard52h13_mosaic.png`,
     tileSize_px: 10,
-    embeddedQuietZone_px: 1,
+    widthAtBorder_modules: 6,
     validTagCount: 48714,
     group: "Standard",
   },
@@ -75,7 +84,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     name: "tagCustom48h12",
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagCustom48h12_mosaic.png`,
     tileSize_px: 10,
-    embeddedQuietZone_px: 1,
+    widthAtBorder_modules: 6,
     validTagCount: 42211,
     group: "Custom",
   },
@@ -87,12 +96,6 @@ export function getFamily(name: string): TagFamilyDef | undefined {
 
 export function listFamilyNames(): string[] {
   return Object.keys(FAMILIES);
-}
-
-/** Edge length in pixels of the *tag bitmap proper* (black border + data
- *  payload), excluding the embedded quiet zone. */
-export function tagBitmapEdge_px(family: TagFamilyDef): number {
-  return family.tileSize_px - 2 * family.embeddedQuietZone_px;
 }
 
 /** Number of tile columns and rows in a mosaic of the given pixel size,
@@ -141,9 +144,9 @@ export function extractTagBits(
   const stride = family.tileSize_px + 1;
   const col = id % cols;
   const row = Math.floor(id / cols);
-  const x0 = col * stride + family.embeddedQuietZone_px;
-  const y0 = row * stride + family.embeddedQuietZone_px;
-  const edge = tagBitmapEdge_px(family);
+  const x0 = col * stride;
+  const y0 = row * stride;
+  const edge = family.tileSize_px;
 
   const out: boolean[][] = [];
   for (let dy = 0; dy < edge; dy++) {

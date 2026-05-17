@@ -14,18 +14,18 @@ function require_(condition: boolean, message: string): asserts condition {
 /** Total side length occupied by one tag, including its quiet zone and cut
  *  margin. Adjacent footprints share their cut-margin boundary, so the
  *  pitch between two tags equals the footprint. */
-function tagFootprint_mm(tagSize_mm: number, options: LayoutOptions): number {
-  return tagSize_mm + 2 * (options.quietZone_mm + options.cutMargin_mm);
+function tagFootprint_mm(tileSize_mm: number, options: LayoutOptions): number {
+  return tileSize_mm + 2 * (options.quietZone_mm + options.cutMargin_mm);
 }
 
-function tagsPerAxis(printable_mm: number, tagSize_mm: number, options: LayoutOptions): number {
-  const footprint = tagFootprint_mm(tagSize_mm, options);
+function tagsPerAxis(printable_mm: number, tileSize_mm: number, options: LayoutOptions): number {
+  const footprint = tagFootprint_mm(tileSize_mm, options);
   if (printable_mm < footprint) return 0;
   return Math.floor(printable_mm / footprint);
 }
 
-function validateInputs(tagSize_mm: number, paper: Paper, options: LayoutOptions): void {
-  require_(tagSize_mm > 0, `tagSize_mm must be positive (got ${tagSize_mm})`);
+function validateInputs(tileSize_mm: number, paper: Paper, options: LayoutOptions): void {
+  require_(tileSize_mm > 0, `tileSize_mm must be positive (got ${tileSize_mm})`);
   require_(
     paper.width_mm > 0 && paper.height_mm > 0,
     `paper dimensions must be positive (got ${paper.width_mm} × ${paper.height_mm})`,
@@ -34,31 +34,41 @@ function validateInputs(tagSize_mm: number, paper: Paper, options: LayoutOptions
     require_(options[k] >= 0, `options.${k} must be non-negative (got ${options[k]})`);
   }
   const minSide_mm = Math.min(paper.width_mm, paper.height_mm);
-  const required_mm = tagFootprint_mm(tagSize_mm, options) + 2 * options.pageMargin_mm;
+  const required_mm = tagFootprint_mm(tileSize_mm, options) + 2 * options.pageMargin_mm;
   require_(
     required_mm <= minSide_mm + 1e-9,
     `tag does not fit on paper: footprint + page margins is ${required_mm.toFixed(2)}mm, ` +
       `paper minimum side is ${minSide_mm}mm. ` +
-      `Reduce tagSize_mm, quietZone_mm, cutMargin_mm, or pageMargin_mm.`,
+      `Reduce tileSize_mm, quietZone_mm, cutMargin_mm, or pageMargin_mm.`,
   );
 }
 
+/**
+ * Lay out `tags` onto pages of `paper` with the given margins.
+ *
+ * `tileSize_mm` is the printed dimension of each tag's tile (the bitmap
+ * pulled from the mosaic, including any white ring). `tagSize_mm` is the
+ * AprilTag-spec tag size — between detection corners — used only for the
+ * size shown in labels; defaults to `tileSize_mm` so existing call sites
+ * that don't separate the two keep working.
+ */
 export function planSmallTagLayout(
   tags: readonly TagSpec[],
-  tagSize_mm: number,
+  tileSize_mm: number,
   paper: Paper,
   options: LayoutOptions,
+  tagSize_mm: number = tileSize_mm,
 ): LayoutPlan {
-  validateInputs(tagSize_mm, paper, options);
+  validateInputs(tileSize_mm, paper, options);
 
   const printable_x_mm = paper.width_mm - 2 * options.pageMargin_mm;
   const printable_y_mm = paper.height_mm - 2 * options.pageMargin_mm;
-  const cols = tagsPerAxis(printable_x_mm, tagSize_mm, options);
-  const rows = tagsPerAxis(printable_y_mm, tagSize_mm, options);
+  const cols = tagsPerAxis(printable_x_mm, tileSize_mm, options);
+  const rows = tagsPerAxis(printable_y_mm, tileSize_mm, options);
   require_(cols >= 1 && rows >= 1, "no tags fit in printable area");
 
   const perPage = cols * rows;
-  const f = tagFootprint_mm(tagSize_mm, options);
+  const f = tagFootprint_mm(tileSize_mm, options);
   const block_w_mm = cols * f;
   const block_h_mm = rows * f;
   const block_x0_mm = options.pageMargin_mm;
@@ -93,7 +103,7 @@ export function planSmallTagLayout(
     f,
   );
 
-  return { paper, options, tagSize_mm, pageCount, placements, cutSegments };
+  return { paper, options, tileSize_mm, tagSize_mm, pageCount, placements, cutSegments };
 }
 
 /** Emit a uniform grid of cuts: (cols+1) verticals and (rows+1) horizontals

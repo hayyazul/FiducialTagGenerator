@@ -242,16 +242,16 @@ function drawQuietZoneLabel(
 ): void {
   const Q_mm = plan.options.quietZone_mm;
   if (Q_mm <= 0) return;
-  const tagSize_mm = plan.tagSize_mm;
-  const text = tagCaptionLine(placement.tag.family, placement.tag.id, tagSize_mm);
+  const tile_mm = plan.tileSize_mm;
+  const text = tagCaptionLine(placement.tag.family, placement.tag.id, plan.tagSize_mm);
   // Courier's advance width is 0.6 em per glyph, so a line of `n` glyphs is
   // `0.6 · size · n` wide; pick the largest size that is both ≤ 0.6× the
   // quiet-zone band and narrow enough to stay within the tag's width.
   const natural_mm = Q_mm * 0.6;
-  const widthLimited_mm = tagSize_mm / (0.6 * text.length);
+  const widthLimited_mm = tile_mm / (0.6 * text.length);
   const fontPt = Math.max(0.5, mm(Math.min(natural_mm, widthLimited_mm)));
   const w = font.widthOfTextAtSize(text, fontPt);
-  const x = mm(placement.x_mm + tagSize_mm / 2) - w / 2;
+  const x = mm(placement.x_mm + tile_mm / 2) - w / 2;
   // Baseline ~28 % up from the cut line, putting the glyph body in the lower
   // ~60 % of the band.
   const y = mm(placement.y_mm - Q_mm + Q_mm * 0.28);
@@ -298,15 +298,15 @@ function drawTag(
   plan: LayoutPlan,
   bits: BitsProvider,
 ): void {
-  const tagSize_mm = plan.tagSize_mm;
+  const tile_mm = plan.tileSize_mm;
   const grid = bits.bits(placement.tag.family, placement.tag.id);
 
   if (grid === null) {
     page.drawRectangle({
       x: mm(placement.x_mm),
       y: mm(placement.y_mm),
-      width: mm(tagSize_mm),
-      height: mm(tagSize_mm),
+      width: mm(tile_mm),
+      height: mm(tile_mm),
       borderColor: rgb(0.5, 0.5, 0.5),
       borderWidth: 0.4,
     });
@@ -315,7 +315,7 @@ function drawTag(
 
   const edge = grid.length;
   if (edge === 0) return;
-  const cell_mm = tagSize_mm / edge;
+  const cell_mm = tile_mm / edge;
   const cell_pt = mm(cell_mm);
   // Tiny overlap (in points) to suppress hairline seams when the PDF is
   // rasterized at low DPI by viewers/printers.
@@ -347,7 +347,7 @@ function drawTag(
     const fontPt = Math.max(0.5, mm(C_mm * 0.7));
     const label = `${placement.tag.family} #${placement.tag.id}`;
     const textWidth = font.widthOfTextAtSize(label, fontPt);
-    const tagCenter_pt = mm(placement.x_mm + tagSize_mm / 2);
+    const tagCenter_pt = mm(placement.x_mm + tile_mm / 2);
     const baseline_pt =
       mm(placement.y_mm - plan.options.quietZone_mm - C_mm) + mm(C_mm * 0.15);
     page.drawText(label, {
@@ -388,14 +388,15 @@ function drawBackPage(
 
   // For every front placement, draw a back-side label at its mirrored
   // position. The tag bounds on the back are:
-  //   x_back = W − x_front − tagSize     (tag-size wide)
-  //   y_back = y_front                    (unchanged)
-  const tagSize_mm = plan.tagSize_mm;
+  //   x_back = W − x_front − tileSize     (tile-size wide)
+  //   y_back = y_front                     (unchanged)
+  const tile_mm = plan.tileSize_mm;
+  const tagSpec_mm = plan.tagSize_mm;
   for (const placement of plan.placements) {
     if (placement.page !== pageIndex) continue;
-    const x_back_mm = W_mm - placement.x_mm - tagSize_mm;
+    const x_back_mm = W_mm - placement.x_mm - tile_mm;
     const y_back_mm = placement.y_mm;
-    drawBackLabel(page, font, fontBold, placement, x_back_mm, y_back_mm, tagSize_mm);
+    drawBackLabel(page, font, fontBold, placement, x_back_mm, y_back_mm, tile_mm, tagSpec_mm);
   }
 
   drawPageFooter(page, font, plan, pageIndex, true);
@@ -408,15 +409,16 @@ function drawBackLabel(
   placement: Placement,
   x_mm: number,
   y_mm: number,
-  size_mm: number,
+  tile_mm: number,
+  tagSpec_mm: number,
 ): void {
   // Faint border so the user can see the bounds of each tag on the back side
   // (no bitmap to give it shape).
   page.drawRectangle({
     x: mm(x_mm),
     y: mm(y_mm),
-    width: mm(size_mm),
-    height: mm(size_mm),
+    width: mm(tile_mm),
+    height: mm(tile_mm),
     borderColor: rgb(0.75, 0.75, 0.75),
     borderWidth: 0.2,
   });
@@ -424,16 +426,16 @@ function drawBackLabel(
   const lines: Array<{ text: string; bold: boolean }> = [
     { text: placement.tag.family, bold: false },
     { text: `#${placement.tag.id}`, bold: true },
-    { text: formatTagSize(size_mm), bold: false },
+    { text: formatTagSize(tagSpec_mm), bold: false },
   ];
 
-  // Each line takes ~18 % of tag size in font height; line spacing is 1.4×
+  // Each line takes ~18 % of tile size in font height; line spacing is 1.4×
   // the line size. Centre the resulting block in the tag's bounding box.
-  const fontPt = mm(size_mm * 0.18);
+  const fontPt = mm(tile_mm * 0.18);
   const lineHeight = fontPt * 1.4;
   const blockHeight = lineHeight * lines.length;
-  const tagCenterY = mm(y_mm + size_mm / 2);
-  const tagCenterX = mm(x_mm + size_mm / 2);
+  const tagCenterY = mm(y_mm + tile_mm / 2);
+  const tagCenterX = mm(x_mm + tile_mm / 2);
   // Baseline of the topmost line.
   const topBaseline = tagCenterY + blockHeight / 2 - fontPt;
 
@@ -475,7 +477,7 @@ function drawPageFooter(
         : `${pagePlacements.length} tags`;
   const Q = plan.options.quietZone_mm;
   const C = plan.options.cutMargin_mm;
-  const cell = plan.tagSize_mm + 2 * (Q + C);
+  const cell = plan.tileSize_mm + 2 * (Q + C);
   const parts = [
     `Page ${pageIndex + 1}/${plan.pageCount}${isBack ? " (back)" : ""}`,
     `${families.join(",")} ${idLabel}`,

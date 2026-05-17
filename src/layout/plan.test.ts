@@ -93,9 +93,9 @@ describe("planSmallTagLayout — cut segments", () => {
 });
 
 describe("planSmallTagLayout — input validation (fail loudly)", () => {
-  it("rejects non-positive tag size", () => {
-    expect(() => planSmallTagLayout([], 0, square100, noMargins)).toThrow(/tagSize_mm/);
-    expect(() => planSmallTagLayout([], -1, square100, noMargins)).toThrow(/tagSize_mm/);
+  it("rejects non-positive tile size", () => {
+    expect(() => planSmallTagLayout([], 0, square100, noMargins)).toThrow(/tileSize_mm/);
+    expect(() => planSmallTagLayout([], -1, square100, noMargins)).toThrow(/tileSize_mm/);
   });
 
   it("rejects non-positive paper dimensions", () => {

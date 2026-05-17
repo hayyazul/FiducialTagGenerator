@@ -2,7 +2,6 @@ import {
   type BitsProvider,
   getFamily,
   listFamilyNames,
-  tagBitmapEdge_px,
   type TagFamilyDef,
 } from "./families";
 
@@ -91,12 +90,23 @@ function field(id: string): HTMLInputElement | HTMLSelectElement {
   return el;
 }
 
-/** Recommended quiet zone per AprilTag spec: 1 module wide.
- *  module_mm = canonical tag size / bitmap edge in modules. */
+/** The printed tile is wider than the AprilTag-spec tag size whenever the
+ *  family carries modules outside its black border (Standard / Custom
+ *  families have outer data; tag36h11 has a white outer ring). Tag size
+ *  spans `widthAtBorder_modules` modules across; the full tile spans
+ *  `tileSize_px` modules. */
+function tileSize_mmFromTagSize(tagSize_mm: number, family: TagFamilyDef): number {
+  return tagSize_mm * (family.tileSize_px / family.widthAtBorder_modules);
+}
+
+/** Default quiet zone added outside the printed tile: half a module. The
+ *  tile already includes whatever white border the family ships with (e.g.
+ *  tag36h11's outer ring), so this is just a small cutting buffer.
+ *  module_mm = tag size / widthAtBorder_modules. */
 function deriveQuietZone_mm(tagSize_mm: number, family: TagFamilyDef): number {
-  const edgeModules = tagBitmapEdge_px(family);
-  if (!Number.isFinite(tagSize_mm) || tagSize_mm <= 0 || edgeModules <= 0) return 0;
-  return tagSize_mm / edgeModules;
+  const wab = family.widthAtBorder_modules;
+  if (!Number.isFinite(tagSize_mm) || tagSize_mm <= 0 || wab <= 0) return 0;
+  return 0.5 * (tagSize_mm / wab);
 }
 
 function readForm(): FormState {
@@ -112,19 +122,20 @@ function readForm(): FormState {
   };
 }
 
-/** "Total size" = tag size + the quiet zone on every side. With the override
- *  off the quiet zone is the auto 1-module width, so total is a fixed multiple
- *  of the tag size; with it on, total is tag size + 2× the user's quiet zone.
- *  Returns null when the tag size isn't a usable number. */
+/** "Total size" = the printed tile + the quiet zone on every side. The
+ *  printed tile is the full mosaic tile, which is wider than the spec tag
+ *  size by `tileSize_px / widthAtBorder_modules`. With the override off the
+ *  quiet zone is the auto half-module width; with it on, the user supplies
+ *  the quiet zone directly. Returns null when inputs aren't usable. */
 function totalSizeFromTag(s: FormState, familyDef: TagFamilyDef | undefined): number | null {
   if (!familyDef || !Number.isFinite(s.tagSize_mm) || s.tagSize_mm <= 0) return null;
-  if (s.overrideAdvanced) {
-    const qz = Number.isFinite(s.quietZone_mm) && s.quietZone_mm >= 0 ? s.quietZone_mm : 0;
-    return s.tagSize_mm + 2 * qz;
-  }
-  const edge = tagBitmapEdge_px(familyDef);
-  if (edge <= 0) return null;
-  return s.tagSize_mm * (1 + 2 / edge);
+  const tile_mm = tileSize_mmFromTagSize(s.tagSize_mm, familyDef);
+  const qz = s.overrideAdvanced
+    ? Number.isFinite(s.quietZone_mm) && s.quietZone_mm >= 0
+      ? s.quietZone_mm
+      : 0
+    : deriveQuietZone_mm(s.tagSize_mm, familyDef);
+  return tile_mm + 2 * qz;
 }
 
 /** Sync derived/dependent fields to the form state:
@@ -156,16 +167,23 @@ function syncDependentFields(s: FormState, familyDef: TagFamilyDef | undefined):
 
 /** When the user edits Total size directly (only possible with the override
  *  off), push the implied tag size back into the Tag size field. `recompute`
- *  then re-reads the form and renders from that. */
+ *  then re-reads the form and renders from that.
+ *
+ *  Total = tile + 2·qz = tagSize·(tile/wab) + 2·(0.5·tagSize/wab)
+ *        = tagSize·((tile + 1)/wab)
+ *  ⇒ tagSize = Total · wab / (tile + 1). */
 function handleTotalSizeInput(): void {
   const total = field("totalSize") as HTMLInputElement;
   if (total.disabled) return;
   const familyDef = getFamily(field("family").value);
   const totalVal = Number.parseFloat(total.value);
   if (!familyDef || !Number.isFinite(totalVal) || totalVal <= 0) return;
-  const edge = tagBitmapEdge_px(familyDef);
-  if (edge <= 0) return;
-  (field("tagSize") as HTMLInputElement).value = (totalVal / (1 + 2 / edge)).toFixed(2);
+  const tile = familyDef.tileSize_px;
+  const wab = familyDef.widthAtBorder_modules;
+  if (tile <= 0 || wab <= 0) return;
+  (field("tagSize") as HTMLInputElement).value = (
+    (totalVal * wab) / (tile + 1)
+  ).toFixed(2);
 }
 
 /** Form fields that can carry an inline validation error. Each has a sibling
@@ -352,9 +370,10 @@ function recompute(): void {
     cutMargin_mm: effective.cutMargin_mm,
   };
 
+  const tileSize_mm = tileSize_mmFromTagSize(effective.tagSize_mm, familyDef);
   let plan: LayoutPlan;
   try {
-    plan = planSmallTagLayout(tags, effective.tagSize_mm, paper, options);
+    plan = planSmallTagLayout(tags, tileSize_mm, paper, options, effective.tagSize_mm);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (/does not fit on paper|no tags fit/i.test(message)) {
@@ -375,14 +394,14 @@ function recompute(): void {
   }
 
   const loaded = loadedFamilies.has(effective.family);
-  const footprint =
-    effective.tagSize_mm + 2 * (effective.quietZone_mm + effective.cutMargin_mm);
+  const footprint = tileSize_mm + 2 * (effective.quietZone_mm + effective.cutMargin_mm);
   const summary =
     `${plan.placements.length} tag${plan.placements.length === 1 ? "" : "s"} ` +
     `across ${plan.pageCount} page${plan.pageCount === 1 ? "" : "s"} on ` +
     `${paper.width_mm} × ${paper.height_mm} mm paper.${loaded ? "" : " (Loading bitmaps…)"}`;
   const detail =
-    `Tag size ${effective.tagSize_mm.toFixed(2)} mm; ` +
+    `Tag size ${effective.tagSize_mm.toFixed(2)} mm ` +
+    `(printed tile ${tileSize_mm.toFixed(2)} mm); ` +
     `quiet zone ${effective.quietZone_mm.toFixed(2)} mm; ` +
     `cut margin ${effective.cutMargin_mm.toFixed(2)} mm; ` +
     `printed cell ${footprint.toFixed(2)} mm.`;

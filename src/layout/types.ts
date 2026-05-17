@@ -42,7 +42,7 @@ export interface LayoutOptions {
 
 /**
  * One tag's position on a page. (x_mm, y_mm) is the lower-left corner of
- * the tag *bitmap* — quiet zone and cut margin extend outward from there.
+ * the printed tile — quiet zone and cut margin extend outward from there.
  */
 export interface Placement {
   tag: TagSpec;
@@ -63,9 +63,18 @@ export interface CutSegment {
 export interface LayoutPlan {
   paper: Paper;
   options: LayoutOptions;
-  /** Side length of every tag bitmap on every page. Small-tag mode is
-   *  uniform — all tags share one size — so the size lives on the plan
+  /** Side length of every printed tile on every page — the full mosaic
+   *  tile drawn for each tag (data ring, black border, and any white
+   *  ring the family ships with). Layout and rendering geometry use
+   *  this; small-tag mode is uniform, so the size lives on the plan
    *  rather than per-placement. */
+  tileSize_mm: number;
+  /** AprilTag-spec "tag size" — the distance between detection corners
+   *  (= edge between white border and black border). Strictly smaller
+   *  than `tileSize_mm` whenever the tile carries extra modules outside
+   *  the black border (Standard / Custom families) or a white outer ring
+   *  (tag36h11). Used for the size shown in labels; never for layout
+   *  geometry. */
   tagSize_mm: number;
   pageCount: number;
   placements: Placement[];

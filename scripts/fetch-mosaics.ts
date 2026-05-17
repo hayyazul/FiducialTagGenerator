@@ -20,14 +20,11 @@ import { fileURLToPath } from "node:url";
 
 interface ExpectedFamily {
   name: string;
-  /** Pixel edge of one tile in the mosaic, including the embedded quiet zone.
-   *  Mosaic stride between adjacent tiles is `tileSize_px + 1` (the upstream
-   *  generator inserts a 1-pixel black separator). */
+  /** Pixel edge of one tile in the mosaic. The tile is the tag bitmap
+   *  exactly as it should be printed. Mosaic stride between adjacent tiles
+   *  is `tileSize_px + 1` (the upstream generator inserts a 1-pixel black
+   *  separator). */
   tileSize_px: number;
-  /** Width in mosaic pixels of the white border baked into each tile. The
-   *  AprilTag bitmap proper is `tileSize_px − 2·embeddedQuietZone_px` on a
-   *  side. */
-  embeddedQuietZone_px: number;
   /** Number of *valid* tag IDs in the family (the mosaic may contain extra
    *  blank tiles to round out a rectangular grid). */
   validTagCount: number;
@@ -37,12 +34,12 @@ interface ExpectedFamily {
 // out of scope until upstream packages it. Values come from the AprilTag
 // spec / upstream READMEs; this script confirms them against the PNG.
 const FAMILIES: ExpectedFamily[] = [
-  { name: "tag36h11",         tileSize_px: 10, embeddedQuietZone_px: 1, validTagCount: 587 },
-  { name: "tagStandard41h12", tileSize_px:  9, embeddedQuietZone_px: 1, validTagCount: 2115 },
-  { name: "tagStandard52h13", tileSize_px: 10, embeddedQuietZone_px: 1, validTagCount: 48714 },
-  { name: "tagCustom48h12",   tileSize_px: 10, embeddedQuietZone_px: 1, validTagCount: 42211 },
-  { name: "tagCircle21h7",    tileSize_px:  9, embeddedQuietZone_px: 1, validTagCount: 38 },
-  { name: "tagCircle49h12",   tileSize_px: 11, embeddedQuietZone_px: 1, validTagCount: 65535 },
+  { name: "tag36h11",         tileSize_px: 10, validTagCount: 587 },
+  { name: "tagStandard41h12", tileSize_px:  9, validTagCount: 2115 },
+  { name: "tagStandard52h13", tileSize_px: 10, validTagCount: 48714 },
+  { name: "tagCustom48h12",   tileSize_px: 10, validTagCount: 42211 },
+  { name: "tagCircle21h7",    tileSize_px:  9, validTagCount: 38 },
+  { name: "tagCircle49h12",   tileSize_px: 11, validTagCount: 65535 },
 ];
 
 const UPSTREAM_BASE = "https://raw.githubusercontent.com/AprilRobotics/apriltag-imgs/master";
@@ -136,7 +133,6 @@ function snippet(r: VerifyResult): string {
     `    name: "${f.name}",\n` +
     `    mosaicPath: \`\${import.meta.env.BASE_URL}resources/${f.name}_mosaic.png\`,\n` +
     `    tileSize_px: ${f.tileSize_px},\n` +
-    `    embeddedQuietZone_px: ${f.embeddedQuietZone_px},\n` +
     `    validTagCount: ${f.validTagCount},\n` +
     `  },`
   );

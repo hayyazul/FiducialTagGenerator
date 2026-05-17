@@ -6,7 +6,7 @@
  * the pure registry/extractor in `./index.ts`.
  */
 
-import { extractTagBits, getFamily, mosaicGrid, tagBitmapEdge_px, type TagFamilyDef } from ".";
+import { extractTagBits, getFamily, mosaicGrid, type TagFamilyDef } from ".";
 
 export interface FamilyBitmaps {
   family: TagFamilyDef;
@@ -53,7 +53,7 @@ async function decode(family: TagFamilyDef): Promise<FamilyBitmaps> {
 
   const { cols, rows } = mosaicGrid(family, W, H);
   const totalTiles = cols * rows;
-  const edge = tagBitmapEdge_px(family);
+  const edge = family.tileSize_px;
   const bitsCache = new Map<number, boolean[][]>();
   return {
     family,
