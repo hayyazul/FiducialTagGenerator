@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { extractTagBits, mosaicGrid, type TagFamilyDef } from "./index";
+import {
+  extractTagBits,
+  mosaicGrid,
+  outerRadiusModulesFor,
+  type TagFamilyDef,
+} from "./index";
 
 /** Build a fake mosaic pixel buffer: 2×2 grid of 4×4 tiles with 1-pixel
  *  black separators between them. Then write a known bit pattern into one
@@ -16,6 +21,7 @@ function makeFakeMosaic(): {
     tileSize_px: 4,
     widthAtBorder_modules: 4,
     validTagCount: 4,
+    shape: "square",
   };
   // Layout:
   //   tiles at (0..3, 0..3), (5..8, 0..3), (0..3, 5..8), (5..8, 5..8)
@@ -52,6 +58,7 @@ describe("mosaicGrid", () => {
       tileSize_px: 10,
       widthAtBorder_modules: 8,
       validTagCount: 587,
+      shape: "square",
     };
     expect(mosaicGrid(family, 263, 274)).toEqual({ cols: 24, rows: 25 });
   });
@@ -77,6 +84,21 @@ describe("extractTagBits", () => {
     expect(() => extractTagBits(pixels, width, height, family, -1)).toThrow(/out of range/);
   });
 
+  it("computes outer radius (in modules) of the smallest enclosing circle", () => {
+    // A 5×5 tile with a single black pixel at the (0, 0) corner. Tile center
+    // is at (2, 2); the outer corner of pixel (0, 0) is at (-0.5, -0.5),
+    // which is sqrt(2.5² + 2.5²) ≈ 3.5355 modules from the center.
+    const tile = (mark: Array<[number, number]>, edge: number): boolean[][] =>
+      Array.from({ length: edge }, (_, r) =>
+        Array.from({ length: edge }, (_, c) => mark.some(([y, x]) => y === r && x === c)),
+      );
+    expect(outerRadiusModulesFor(tile([[0, 0]], 5))).toBeCloseTo(Math.sqrt(2 * 2.5 * 2.5), 6);
+    // A tile with a single pixel at the center (radius = 0.5 √2 ≈ 0.707).
+    expect(outerRadiusModulesFor(tile([[2, 2]], 5))).toBeCloseTo(Math.sqrt(0.5), 6);
+    // Empty tile: zero radius.
+    expect(outerRadiusModulesFor(tile([], 5))).toBe(0);
+  });
+
   it("preserves row-major orientation: y=0 is the top row of the tag", () => {
     const family: TagFamilyDef = {
       name: "tiny",
@@ -84,6 +106,7 @@ describe("extractTagBits", () => {
       tileSize_px: 2,
       widthAtBorder_modules: 2,
       validTagCount: 1,
+      shape: "square",
     };
     // Single 2×2 tile occupying the entire image.
     // Make top row black, bottom row white.

@@ -50,6 +50,18 @@ export interface TagFamilyDef {
   /** UI grouping label. Families with the same `group` appear under one
    *  `<optgroup>` in the family picker. Layout/render code ignores this. */
   group?: string;
+  /** Shape of the printed cut around each tag — and, transitively, of the
+   *  quiet zone. Square families get a rectangular cut grid; Circle
+   *  families get one circular cut per tag. Set explicitly per family so
+   *  that adding a new family forces a deliberate choice. */
+  shape: "square" | "circle";
+  /** Required when `shape === "circle"`. Radius, in module units, of the
+   *  smallest circle centered on the tile center that encloses every
+   *  printed (black) pixel across any valid tag in the family. Used to
+   *  size the cut circle in millimetres as
+   *  `outerRadius_modules · (tile_mm / tileSize_px) + quietZone_mm`.
+   *  Absent for square families. */
+  outerRadius_modules?: number;
 }
 
 // Display order is the iteration order of this object. The UI groups
@@ -63,6 +75,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     widthAtBorder_modules: 8,
     validTagCount: 587,
     group: "Classic",
+    shape: "square",
   },
   tagStandard41h12: {
     name: "tagStandard41h12",
@@ -71,6 +84,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     widthAtBorder_modules: 5,
     validTagCount: 2115,
     group: "Standard",
+    shape: "square",
   },
   tagStandard52h13: {
     name: "tagStandard52h13",
@@ -79,6 +93,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     widthAtBorder_modules: 6,
     validTagCount: 48714,
     group: "Standard",
+    shape: "square",
   },
   tagCustom48h12: {
     name: "tagCustom48h12",
@@ -87,6 +102,36 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     widthAtBorder_modules: 6,
     validTagCount: 42211,
     group: "Custom",
+    shape: "square",
+  },
+  tagCircle21h7: {
+    name: "tagCircle21h7",
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle21h7_mosaic.png`,
+    tileSize_px: 9,
+    // Detection edge of the inner white-bordered square. The Circle families
+    // ship with `reversed_border` upstream, so the canonical detection
+    // outline is white, not black — auto-detection (see
+    // `scripts/measure-circle-geometry.py`) lists the candidates and the
+    // value below comes from the upstream apriltag spec.
+    widthAtBorder_modules: 5,
+    // Radius of the smallest enclosing circle (in modules) across every
+    // valid tag, measured by the script. ≈ tileSize_px · √2 / 2 because the
+    // outer corner pixels of the tile are part of the family's decorative
+    // ring on all 38 tags.
+    outerRadius_modules: 6.363961,
+    validTagCount: 38,
+    group: "Circle",
+    shape: "circle",
+  },
+  tagCircle49h12: {
+    name: "tagCircle49h12",
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle49h12_mosaic.png`,
+    tileSize_px: 11,
+    widthAtBorder_modules: 5,
+    outerRadius_modules: 7.778175,
+    validTagCount: 65535,
+    group: "Circle",
+    shape: "circle",
   },
 };
 
@@ -121,6 +166,35 @@ export function mosaicGrid(
  *
  * Pure function; suitable for unit tests with synthesized pixel buffers.
  */
+/**
+ * Radius (in module units) of the smallest circle centered on the tile
+ * center that encloses every black pixel in `bits`. The radius is measured
+ * to the *outer* corner of each black pixel, not its center, so the
+ * returned circle reaches the visible edge of the printed module. Returns
+ * 0 for an all-white tile.
+ *
+ * Pure function over a bit grid; the measurement script in
+ * `scripts/measure-circle-geometry.py` uses the same definition tag-by-tag
+ * and reports the max across a family.
+ */
+export function outerRadiusModulesFor(bits: ReadonlyArray<ReadonlyArray<boolean>>): number {
+  const edge = bits.length;
+  if (edge === 0) return 0;
+  const center = (edge - 1) / 2;
+  let best = 0;
+  for (let row = 0; row < edge; row++) {
+    const r = bits[row]!;
+    for (let col = 0; col < r.length; col++) {
+      if (!r[col]) continue;
+      const dx = Math.abs(col - center) + 0.5;
+      const dy = Math.abs(row - center) + 0.5;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > best) best = dist;
+    }
+  }
+  return best;
+}
+
 export function extractTagBits(
   pixels: Uint8Array | Uint8ClampedArray,
   mosaicWidth_px: number,
