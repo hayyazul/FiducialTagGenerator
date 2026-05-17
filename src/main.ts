@@ -5,6 +5,33 @@ import {
   tagBitmapEdge_px,
   type TagFamilyDef,
 } from "./families";
+
+/** Build the `<select>` markup for the family picker, grouping consecutive
+ *  families by their `group` label. Families without a group fall through into
+ *  a trailing ungrouped block. Order is the registry's iteration order. */
+function buildFamilyOptionsMarkup(): string {
+  const items = listFamilyNames()
+    .map((n) => getFamily(n))
+    .filter((f): f is TagFamilyDef => f !== undefined);
+  let out = "";
+  let currentGroup: string | undefined;
+  let groupOpen = false;
+  for (const f of items) {
+    if (f.group !== currentGroup) {
+      if (groupOpen) out += `</optgroup>`;
+      currentGroup = f.group;
+      if (f.group !== undefined) {
+        out += `<optgroup label="${escapeHtml(f.group)}">`;
+        groupOpen = true;
+      } else {
+        groupOpen = false;
+      }
+    }
+    out += `<option value="${escapeHtml(f.name)}">${escapeHtml(f.name)}</option>`;
+  }
+  if (groupOpen) out += `</optgroup>`;
+  return out;
+}
 import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { parseTagIdSpec } from "./ids";
 import { planSmallTagLayout } from "./layout/plan";
@@ -393,9 +420,7 @@ function escapeHtml(s: string): string {
 function bootstrap(): void {
   const app = document.getElementById("app");
   if (!app) return;
-  const familyOptions = listFamilyNames()
-    .map((n) => `<option value="${n}">${n}</option>`)
-    .join("");
+  const familyOptions = buildFamilyOptionsMarkup();
   app.innerHTML = `
     <div class="form-pane">
         <h1>AprilTag PDF Generator</h1>

@@ -38,8 +38,14 @@ export interface TagFamilyDef {
    *  blank tiles to round out a rectangular grid; ids ≥ this number do not
    *  correspond to real tags. */
   validTagCount: number;
+  /** UI grouping label. Families with the same `group` appear under one
+   *  `<optgroup>` in the family picker. Layout/render code ignores this. */
+  group?: string;
 }
 
+// Display order is the iteration order of this object. The UI groups
+// consecutive entries by `group`, so keep families intended for the same
+// `<optgroup>` adjacent here.
 const FAMILIES: Record<string, TagFamilyDef> = {
   tag36h11: {
     name: "tag36h11",
@@ -47,6 +53,31 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     tileSize_px: 10,
     embeddedQuietZone_px: 1,
     validTagCount: 587,
+    group: "Classic",
+  },
+  tagStandard41h12: {
+    name: "tagStandard41h12",
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard41h12_mosaic.png`,
+    tileSize_px: 9,
+    embeddedQuietZone_px: 1,
+    validTagCount: 2115,
+    group: "Standard",
+  },
+  tagStandard52h13: {
+    name: "tagStandard52h13",
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard52h13_mosaic.png`,
+    tileSize_px: 10,
+    embeddedQuietZone_px: 1,
+    validTagCount: 48714,
+    group: "Standard",
+  },
+  tagCustom48h12: {
+    name: "tagCustom48h12",
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCustom48h12_mosaic.png`,
+    tileSize_px: 10,
+    embeddedQuietZone_px: 1,
+    validTagCount: 42211,
+    group: "Custom",
   },
 };
 
