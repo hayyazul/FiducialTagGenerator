@@ -29,10 +29,12 @@ export interface Paper {
  *    tags both stay inside this margin.
  *  - quietZone_mm: required white border around each tag bitmap (AprilTag
  *    detection requires this; cutting must not slice into it).
- *  - cutMargin_mm: extra white paper outside the quiet zone where the
- *    blade travels. After trimming, the tag retains its quiet zone and
- *    loses (most of) the cut margin. Adjacent tags share a single cut
- *    line through the boundary between their cut-margin regions.
+ *  - cutMargin_mm: paper gap between the cut lines of adjacent tags. With
+ *    `cutMargin_mm = 0` (the default), adjacent cuts collapse to a single
+ *    shared line; with `> 0`, each tag has its own cut and the gap between
+ *    a tag's right cut and its right-neighbour's left cut is exactly this
+ *    value. Cuts hug each tag's quiet zone — the margin no longer adds
+ *    slack outside the cut line.
  */
 export interface LayoutOptions {
   pageMargin_mm: number;

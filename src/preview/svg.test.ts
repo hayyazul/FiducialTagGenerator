@@ -101,12 +101,12 @@ describe("renderPlanToSvg", () => {
     expect(svg).not.toContain('stroke="#666666"');
   });
 
-  it("captions each tag with its family and id when the cut margin leaves room", () => {
+  it("draws no caption in the cut band — that text was removed when cut margin became a paper gap", () => {
     const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 1, cutMargin_mm: 2 };
     const plan = planSmallTagLayout([{ family: "tag36h11", id: 7 }], 20, square100, opts);
     const svg = renderPlanToSvg(plan, 0, { imageHref: () => "data:image/png;base64,AAAA" });
-    expect(svg).toContain("tag36h11 #7");
-    expect(svg).toContain(`fill="#4d4d4d"`);
+    expect(svg).not.toContain("tag36h11 #7");
+    expect(svg).not.toContain(`fill="#4d4d4d"`);
   });
 
   it("sets the family/id/size caption in the quiet zone when that option is on", () => {

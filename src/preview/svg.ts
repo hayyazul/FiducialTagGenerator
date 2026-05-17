@@ -24,7 +24,6 @@ export interface TagImageProvider {
 // sheet). Greys are the PDF's rgb() values scaled to 0–255.
 const CUT_LINE = "#8c8c8c"; // rgb(0.55)
 const REG_MARK = "#666666"; // rgb(0.4)
-const TAG_LABEL = "#4d4d4d"; // rgb(0.3)
 const QUIET_LABEL = "#000000"; // rgb(0) — the in-quiet-zone caption
 
 /** Optional, render-only embellishments — they don't change the layout. */
@@ -69,11 +68,7 @@ export function renderPlanToSvg(
       const quietLabel = opts.printLabelsInQuietZone
         ? renderQuietZoneLabel(plan, p.x_mm, p.y_mm, tile, p.tag.family, p.tag.id, flipY)
         : "";
-      return (
-        body +
-        renderTagLabel(plan, p.x_mm, p.y_mm, tile, p.tag.family, p.tag.id, flipY) +
-        quietLabel
-      );
+      return body + quietLabel;
     })
     .join("");
 
@@ -126,30 +121,6 @@ function renderPlaceholder(
     `<text x="${x_mm + tile_mm / 2}" y="${yTop_svg + tile_mm / 2}" ` +
     `font-size="${labelSize}" text-anchor="middle" dominant-baseline="central" ` +
     `fill="#fff" font-family="monospace">${escapeXml(`${family}#${id}`)}</text>`
-  );
-}
-
-/** The "<family> #<id>" caption `render/pdf` prints in the cut-margin band
- *  below each tag. Sized to the cut margin, so it is microscopic with the
- *  default 0.5 mm margin and only legible once the margin is widened. */
-function renderTagLabel(
-  plan: LayoutPlan,
-  x_mm: number,
-  y_mm: number,
-  tile_mm: number,
-  family: string,
-  id: number,
-  flipY: (y_mm: number) => number,
-): string {
-  const C = plan.options.cutMargin_mm;
-  if (C <= 0) return "";
-  const fontSize_mm = C * 0.7;
-  // Matches `render/pdf`'s baseline: y_mm − quietZone − C + 0.15·C.
-  const baseline_mm = y_mm - plan.options.quietZone_mm - C + 0.15 * C;
-  return (
-    `<text x="${x_mm + tile_mm / 2}" y="${flipY(baseline_mm)}" ` +
-    `font-size="${fontSize_mm}" text-anchor="middle" fill="${TAG_LABEL}" ` +
-    `font-family="monospace">${escapeXml(`${family} #${id}`)}</text>`
   );
 }
 

@@ -11,17 +11,30 @@ function require_(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-/** Total side length occupied by one tag, including its quiet zone and cut
- *  margin. Adjacent footprints share their cut-margin boundary, so the
- *  pitch between two tags equals the footprint. */
-function tagFootprint_mm(tileSize_mm: number, options: LayoutOptions): number {
-  return tileSize_mm + 2 * (options.quietZone_mm + options.cutMargin_mm);
+/** Cell geometry under the current `cutMargin_mm` semantic:
+ *   - `cellWidth_mm` is the printed cell containing the tile + its quiet
+ *     zone on every side. The cut lines run at the cell boundary, so the
+ *     cell is what survives a clean trim.
+ *   - `pitch_mm` is the centre-to-centre stride between adjacent cells:
+ *     `cellWidth_mm + cutMargin_mm`. At `cutMargin_mm = 0`, adjacent cells
+ *     share a single boundary line; at `> 0`, the boundary is a paper gap
+ *     with one cut on each side. */
+function cellWidth_mm(tileSize_mm: number, options: LayoutOptions): number {
+  return tileSize_mm + 2 * options.quietZone_mm;
 }
 
+function pitch_mm(tileSize_mm: number, options: LayoutOptions): number {
+  return cellWidth_mm(tileSize_mm, options) + options.cutMargin_mm;
+}
+
+/** Largest N such that `N · cellWidth + (N − 1) · cutMargin ≤ printable`.
+ *  Rearranges to `N ≤ (printable + cutMargin) / pitch` and floors. Returns 0
+ *  when not even one cell fits. */
 function tagsPerAxis(printable_mm: number, tileSize_mm: number, options: LayoutOptions): number {
-  const footprint = tagFootprint_mm(tileSize_mm, options);
-  if (printable_mm < footprint) return 0;
-  return Math.floor(printable_mm / footprint);
+  const cell = cellWidth_mm(tileSize_mm, options);
+  if (printable_mm < cell) return 0;
+  const pitch = pitch_mm(tileSize_mm, options);
+  return Math.floor((printable_mm + options.cutMargin_mm) / pitch);
 }
 
 function validateInputs(tileSize_mm: number, paper: Paper, options: LayoutOptions): void {
@@ -34,12 +47,12 @@ function validateInputs(tileSize_mm: number, paper: Paper, options: LayoutOption
     require_(options[k] >= 0, `options.${k} must be non-negative (got ${options[k]})`);
   }
   const minSide_mm = Math.min(paper.width_mm, paper.height_mm);
-  const required_mm = tagFootprint_mm(tileSize_mm, options) + 2 * options.pageMargin_mm;
+  const required_mm = cellWidth_mm(tileSize_mm, options) + 2 * options.pageMargin_mm;
   require_(
     required_mm <= minSide_mm + 1e-9,
-    `tag does not fit on paper: footprint + page margins is ${required_mm.toFixed(2)}mm, ` +
+    `tag does not fit on paper: cell + page margins is ${required_mm.toFixed(2)}mm, ` +
       `paper minimum side is ${minSide_mm}mm. ` +
-      `Reduce tileSize_mm, quietZone_mm, cutMargin_mm, or pageMargin_mm.`,
+      `Reduce tileSize_mm, quietZone_mm, or pageMargin_mm.`,
   );
 }
 
@@ -68,9 +81,11 @@ export function planSmallTagLayout(
   require_(cols >= 1 && rows >= 1, "no tags fit in printable area");
 
   const perPage = cols * rows;
-  const f = tagFootprint_mm(tileSize_mm, options);
-  const block_w_mm = cols * f;
-  const block_h_mm = rows * f;
+  const cell = cellWidth_mm(tileSize_mm, options);
+  const pitch = pitch_mm(tileSize_mm, options);
+  // Block bounds: N cells with (N−1) cutMargin gaps between them.
+  const block_w_mm = cols * cell + (cols - 1) * options.cutMargin_mm;
+  const block_h_mm = rows * cell + (rows - 1) * options.cutMargin_mm;
   const block_x0_mm = options.pageMargin_mm;
   const block_y0_mm = options.pageMargin_mm;
 
@@ -82,13 +97,13 @@ export function planSmallTagLayout(
     // Reading order: first tag goes top-left. Origin is bottom-left, so the
     // top row is the highest row index.
     const row = rows - 1 - Math.floor(idxOnPage / cols);
-    const cellOrigin_x_mm = block_x0_mm + col * f;
-    const cellOrigin_y_mm = block_y0_mm + row * f;
+    const cellOrigin_x_mm = block_x0_mm + col * pitch;
+    const cellOrigin_y_mm = block_y0_mm + row * pitch;
     return {
       tag,
       page,
-      x_mm: cellOrigin_x_mm + options.quietZone_mm + options.cutMargin_mm,
-      y_mm: cellOrigin_y_mm + options.quietZone_mm + options.cutMargin_mm,
+      x_mm: cellOrigin_x_mm + options.quietZone_mm,
+      y_mm: cellOrigin_y_mm + options.quietZone_mm,
     };
   });
 
@@ -100,15 +115,17 @@ export function planSmallTagLayout(
     block_y0_mm,
     block_w_mm,
     block_h_mm,
-    f,
+    cell,
+    pitch,
   );
 
   return { paper, options, tileSize_mm, tagSize_mm, pageCount, placements, cutSegments };
 }
 
-/** Emit a uniform grid of cuts: (cols+1) verticals and (rows+1) horizontals
- *  per page, each spanning the full block. Adjacent tags share their
- *  cut-margin boundary, so each interior boundary is a single line. */
+/** Emit a cut grid spanning the block. Each cell contributes a left and a
+ *  right cut, and likewise top and bottom; when `cutMargin_mm = 0` the
+ *  pitch equals the cell width and adjacent boundaries collapse to a single
+ *  shared line. */
 function computeCutSegments(
   pageCount: number,
   cols: number,
@@ -117,12 +134,14 @@ function computeCutSegments(
   block_y0_mm: number,
   block_w_mm: number,
   block_h_mm: number,
-  footprint_mm: number,
+  cellWidth: number,
+  pitch: number,
 ): CutSegment[] {
+  const xs = uniqueAxisPositions(block_x0_mm, cols, cellWidth, pitch);
+  const ys = uniqueAxisPositions(block_y0_mm, rows, cellWidth, pitch);
   const segs: CutSegment[] = [];
   for (let p = 0; p < pageCount; p++) {
-    for (let c = 0; c <= cols; c++) {
-      const x = block_x0_mm + c * footprint_mm;
+    for (const x of xs) {
       segs.push({
         page: p,
         x0_mm: x,
@@ -131,8 +150,7 @@ function computeCutSegments(
         y1_mm: block_y0_mm + block_h_mm,
       });
     }
-    for (let r = 0; r <= rows; r++) {
-      const y = block_y0_mm + r * footprint_mm;
+    for (const y of ys) {
       segs.push({
         page: p,
         x0_mm: block_x0_mm,
@@ -143,6 +161,32 @@ function computeCutSegments(
     }
   }
   return segs;
+}
+
+/** Cell-boundary positions along one axis: each cell's left edge plus its
+ *  right edge, deduplicated. Returned in ascending order. */
+function uniqueAxisPositions(
+  origin_mm: number,
+  count: number,
+  cellWidth: number,
+  pitch: number,
+): number[] {
+  const seen = new Set<number>();
+  const positions: number[] = [];
+  const key = (v: number): number => Math.round(v * 1e6);
+  for (let i = 0; i < count; i++) {
+    const left = origin_mm + i * pitch;
+    const right = left + cellWidth;
+    for (const pos of [left, right]) {
+      const k = key(pos);
+      if (!seen.has(k)) {
+        seen.add(k);
+        positions.push(pos);
+      }
+    }
+  }
+  positions.sort((a, b) => a - b);
+  return positions;
 }
 
 /**
@@ -169,7 +213,7 @@ export function maxTagSizeForCount(
   const printable_y = paper.height_mm - 2 * options.pageMargin_mm;
   if (printable_x <= 0 || printable_y <= 0) return 0;
 
-  const fixedOverhead = 2 * (options.quietZone_mm + options.cutMargin_mm);
+  const fixedOverhead = 2 * options.quietZone_mm;
   const upper = Math.min(printable_x, printable_y) - fixedOverhead;
   if (upper <= 0) return 0;
 

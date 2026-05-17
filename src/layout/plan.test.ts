@@ -41,11 +41,41 @@ describe("planSmallTagLayout — grid capacity", () => {
     expect(plan.placements[0]?.x_mm).toBeCloseTo(2.5, 6);
   });
 
-  it("treats cut margin like quiet zone for sizing purposes", () => {
-    // tag 20 + 2*(quiet 1 + cut 1.5) = 25mm footprint → 4 cols.
+  it("treats cut margin as the gap between adjacent cells (not per-side slack)", () => {
+    // Under the new semantic, cell width = tile + 2*quiet = 22 mm; pitch = cell
+    // + cutMargin = 23.5 mm. On 100 mm paper that fits N where
+    // N*22 + (N-1)*1.5 ≤ 100 → N = 4. Tile sits at quietZone (1 mm) inside the
+    // cell, with no extra cut-margin offset.
     const opts: LayoutOptions = { ...noMargins, quietZone_mm: 1, cutMargin_mm: 1.5 };
     const plan = planSmallTagLayout(makeTags("tag36h11", 16), 20, square100, opts);
     expect(plan.placements).toHaveLength(16);
+    expect(plan.placements[0]?.x_mm).toBeCloseTo(1, 6);
+    // Pitch is 23.5 mm, so the second tag starts 23.5 mm further over.
+    expect(plan.placements[1]?.x_mm).toBeCloseTo(1 + 23.5, 6);
+  });
+
+  it("at cutMargin=0, pitch equals cell width and adjacent cuts share a single line", () => {
+    const opts: LayoutOptions = { ...noMargins, quietZone_mm: 1, cutMargin_mm: 0 };
+    const plan = planSmallTagLayout(makeTags("tag36h11", 16), 20, square100, opts);
+    // tile 20 + 2*quiet 1 = 22 mm cell; 4 cells fit in 100 mm with 12 mm slack.
+    expect(plan.placements).toHaveLength(16);
+    const cuts = plan.cutSegments.filter((c) => c.page === 0);
+    const verticals = cuts.filter((c) => c.x0_mm === c.x1_mm);
+    // 4 cells share boundaries: 4+1 = 5 unique vertical cuts (the grid).
+    expect(verticals.length).toBe(5);
+  });
+
+  it("at cutMargin>0, emits two cut lines per interior boundary", () => {
+    const opts: LayoutOptions = { ...noMargins, quietZone_mm: 1, cutMargin_mm: 1.5 };
+    const plan = planSmallTagLayout(makeTags("tag36h11", 16), 20, square100, opts);
+    const cuts = plan.cutSegments.filter((c) => c.page === 0);
+    const verticals = cuts.filter((c) => c.x0_mm === c.x1_mm);
+    // 4 cells × 2 edges each = 8 vertical cuts (no sharing when there is a gap).
+    expect(verticals.length).toBe(8);
+    // The gap between cell 0's right cut and cell 1's left cut is cutMargin_mm.
+    const xs = [...new Set(verticals.map((c) => c.x0_mm))].sort((a, b) => a - b);
+    expect(xs[1]! - xs[0]!).toBeCloseTo(22, 6); // cell width
+    expect(xs[2]! - xs[1]!).toBeCloseTo(1.5, 6); // cut margin gap
   });
 
 });
@@ -80,8 +110,9 @@ describe("planSmallTagLayout — page assignment", () => {
 });
 
 describe("planSmallTagLayout — cut segments", () => {
-  it("emits a shared grid (rows+1 horizontals, cols+1 verticals)", () => {
-    // 2×2 grid: 50mm paper with 25mm tag footprint = (50/25) = 2 cols.
+  it("emits a shared grid at cutMargin=0 (rows+1 horizontals, cols+1 verticals)", () => {
+    // 2×2 grid: 50mm paper with 25mm cell = 2 cols. cutMargin=0 collapses
+    // adjacent boundaries to a single shared line.
     const paper: Paper = { width_mm: 50, height_mm: 50 };
     const plan = planSmallTagLayout(makeTags("tag36h11", 4), 25, paper, noMargins);
     const cuts = plan.cutSegments.filter((c) => c.page === 0);

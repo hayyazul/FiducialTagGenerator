@@ -220,7 +220,7 @@ function drawTagPage(
 
   for (const placement of plan.placements) {
     if (placement.page !== pageIndex) continue;
-    drawTag(page, font, placement, plan, bits);
+    drawTag(page, placement, plan, bits);
     if (labelInQuietZone) drawQuietZoneLabel(page, font, placement, plan);
   }
 
@@ -293,7 +293,6 @@ function drawRegistrationMark(page: PDFPage, x_mm: number, y_mm: number): void {
 
 function drawTag(
   page: PDFPage,
-  font: PDFFont,
   placement: Placement,
   plan: LayoutPlan,
   bits: BitsProvider,
@@ -337,26 +336,6 @@ function drawTag(
         color: rgb(0, 0, 0),
       });
     }
-  }
-
-  // Per-tag label below the bitmap, in the cut-margin band. Sized to fit the
-  // cut margin; with the default 0.5 mm cut margin the label is microscopic
-  // by design — widening the cut margin (Advanced options) makes it legible.
-  const C_mm = plan.options.cutMargin_mm;
-  if (C_mm > 0) {
-    const fontPt = Math.max(0.5, mm(C_mm * 0.7));
-    const label = `${placement.tag.family} #${placement.tag.id}`;
-    const textWidth = font.widthOfTextAtSize(label, fontPt);
-    const tagCenter_pt = mm(placement.x_mm + tile_mm / 2);
-    const baseline_pt =
-      mm(placement.y_mm - plan.options.quietZone_mm - C_mm) + mm(C_mm * 0.15);
-    page.drawText(label, {
-      x: tagCenter_pt - textWidth / 2,
-      y: baseline_pt,
-      font,
-      size: fontPt,
-      color: rgb(0.3, 0.3, 0.3),
-    });
   }
 }
 
@@ -476,8 +455,7 @@ function drawPageFooter(
         ? `#${ids[0]}..${ids[ids.length - 1]}`
         : `${pagePlacements.length} tags`;
   const Q = plan.options.quietZone_mm;
-  const C = plan.options.cutMargin_mm;
-  const cell = plan.tileSize_mm + 2 * (Q + C);
+  const cell = plan.tileSize_mm + 2 * Q;
   const parts = [
     `Page ${pageIndex + 1}/${plan.pageCount}${isBack ? " (back)" : ""}`,
     `${families.join(",")} ${idLabel}`,

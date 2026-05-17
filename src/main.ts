@@ -53,7 +53,7 @@ const PAPERS: Record<string, Paper> = {
   Square100: { width_mm: 100, height_mm: 100 },
 };
 
-const DEFAULT_CUT_MARGIN_MM = 0.5;
+const DEFAULT_CUT_MARGIN_MM = 0;
 
 interface FormState {
   family: string;
@@ -394,7 +394,7 @@ function recompute(): void {
   }
 
   const loaded = loadedFamilies.has(effective.family);
-  const footprint = tileSize_mm + 2 * (effective.quietZone_mm + effective.cutMargin_mm);
+  const cellWidth = tileSize_mm + 2 * effective.quietZone_mm;
   const summary =
     `${plan.placements.length} tag${plan.placements.length === 1 ? "" : "s"} ` +
     `across ${plan.pageCount} page${plan.pageCount === 1 ? "" : "s"} on ` +
@@ -404,7 +404,7 @@ function recompute(): void {
     `(printed tile ${tileSize_mm.toFixed(2)} mm); ` +
     `quiet zone ${effective.quietZone_mm.toFixed(2)} mm; ` +
     `cut margin ${effective.cutMargin_mm.toFixed(2)} mm; ` +
-    `printed cell ${footprint.toFixed(2)} mm.`;
+    `printed cell ${cellWidth.toFixed(2)} mm.`;
   const info = document.getElementById("info");
   if (info) {
     info.innerHTML =
@@ -483,7 +483,7 @@ function bootstrap(): void {
               </div>
               <div>
                 <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled><span class="field-error" id="cutMargin-err"></span></label>
-                <span style="color:#888;font-size:0.85em">blade slack on each side of every cut</span>
+                <span style="color:#888;font-size:0.85em">paper gap between cuts of adjacent tags (0 = shared cut line)</span>
               </div>
               <div>
                 <label>Page margin (mm) <input id="pageMargin" type="number" value="10" step="0.5" min="0"><span class="field-error" id="pageMargin-err"></span></label>
