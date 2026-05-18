@@ -559,10 +559,18 @@ function syncSubtagChain(): void {
     if (inheritBox && subIdsInput) {
       subIdsInput.disabled = inheritBox.checked;
       if (inheritBox.checked) {
-        const parentIds = depth === 0
-          ? field("ids").value
-          : (document.getElementById(`subIds-${depth - 1}`) as HTMLInputElement | null)?.value ?? "";
-        subIdsInput.value = parentIds;
+        if (subDef && isRecursiveFamily(subDef)) {
+          subIdsInput.value = "auto (unique per tag)";
+          subIdsInput.style.color = "#999";
+        } else {
+          const parentIds = depth === 0
+            ? field("ids").value
+            : (document.getElementById(`subIds-${depth - 1}`) as HTMLInputElement | null)?.value ?? "";
+          subIdsInput.value = parentIds;
+          subIdsInput.style.color = "#999";
+        }
+      } else {
+        subIdsInput.style.color = "";
       }
     }
 
@@ -613,6 +621,18 @@ interface SubtagChainResult {
   allFamiliesLoaded: boolean;
 }
 
+/** Assign one unique sub-tag ID per parent tag, picking the smallest IDs
+ *  not present in `parentIds`. Returns fewer than `parentIds.length` entries
+ *  when the family doesn't have enough unused IDs. */
+function assignDissimilarIds(parentIds: number[], validTagCount: number): number[] {
+  const parentSet = new Set(parentIds);
+  const result: number[] = [];
+  for (let id = 0; id < validTagCount && result.length < parentIds.length; id++) {
+    if (!parentSet.has(id)) result.push(id);
+  }
+  return result;
+}
+
 /** Read the sub-tag chain from the form, validate, and return a function that
  *  builds the subtag for each parent index. Returns undefined on validation failure. */
 function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamilyName: string): SubtagChainResult | null {
@@ -639,7 +659,17 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
 
     let subIds: number[];
     if (inheriting) {
-      subIds = curIds;
+      if (isRecursiveFamily(subDef)) {
+        subIds = assignDissimilarIds(curIds, subDef.validTagCount);
+        if (subIds.length < curIds.length) {
+          setFieldError(`subIds-${depth}`,
+            `${subFamilyName} only has ${subDef.validTagCount} tags, but ${curIds.length - subIds.length} ` +
+            `of the parent's ${curIds.length} IDs cannot be assigned a unique sub-tag ID.`);
+          return null;
+        }
+      } else {
+        subIds = curIds;
+      }
     } else {
       try {
         subIds = parseTagIdSpec(subIdsInput?.value ?? "");
@@ -651,6 +681,16 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
         setFieldError(`subIds-${depth}`,
           `Must have exactly ${curIds.length} IDs to match the ${depth === 0 ? "outer" : "level " + depth} tag count.`);
         return null;
+      }
+      if (isRecursiveFamily(subDef)) {
+        const parentSet = new Set(curIds);
+        const overlap = subIds.find((id) => parentSet.has(id));
+        if (overlap !== undefined) {
+          setFieldError(`subIds-${depth}`,
+            `Sub-tag IDs must differ from parent IDs when nesting recursive families. ` +
+            `ID ${overlap} appears in both levels.`);
+          return null;
+        }
       }
     }
 
