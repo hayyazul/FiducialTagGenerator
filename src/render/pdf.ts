@@ -6,7 +6,7 @@ import {
   rgb,
 } from "pdf-lib";
 import { type BitsProvider, getFamily } from "../families";
-import type { LayoutPlan, Placement, TagSpec } from "../layout/types";
+import type { LayoutPlan, Placement, SubtagLevel, TagSpec } from "../layout/types";
 import { formatTagSize, subtagSizeLine, tagCaptionLine } from "../tag-caption";
 
 /**
@@ -254,7 +254,7 @@ function drawQuietZoneLabel(
   if (Q_mm <= 0) return;
   const tile_mm = plan.tileSize_mm;
   const mainText = tagCaptionLine(placement.tag.family, placement.tag.id, plan.tagSize_mm);
-  const subText = subtagChainLabel(placement.tag.subtag);
+  const subText = subtagChainLabel(placement.tag.subtag, plan.subtagLevels);
 
   if (subText) {
     // Two lines: main caption and sub-tag chain, each gets half the band.
@@ -278,15 +278,19 @@ function drawQuietZoneLabel(
   }
 }
 
-function subtagChainLabel(subtag: TagSpec | undefined): string {
+function subtagChainLabel(subtag: TagSpec | undefined, levels: SubtagLevel[]): string {
   if (!subtag) return "";
   const parts: string[] = [];
   let s: TagSpec | undefined = subtag;
+  let i = 0;
   while (s) {
-    parts.push(`${s.family} #${s.id}`);
+    const lvl = levels[i];
+    const size = lvl ? ` · ${formatTagSize(lvl.tagSize_mm)}` : "";
+    parts.push(`> ${s.family} #${s.id}${size}`);
     s = s.subtag;
+    i++;
   }
-  return "> " + parts.join(" > ");
+  return parts.join("  ");
 }
 
 function drawRegistrationCorners(page: PDFPage, plan: LayoutPlan): void {
@@ -434,7 +438,7 @@ function drawBackPage(
     if (placement.page !== pageIndex) continue;
     const x_back_mm = W_mm - placement.x_mm - tile_mm;
     const y_back_mm = placement.y_mm;
-    drawBackLabel(page, font, fontBold, placement, x_back_mm, y_back_mm, tile_mm, tagSpec_mm);
+    drawBackLabel(page, font, fontBold, placement, x_back_mm, y_back_mm, tile_mm, tagSpec_mm, plan.subtagLevels);
   }
 
   drawPageFooter(page, font, plan, pageIndex, true);
@@ -449,6 +453,7 @@ function drawBackLabel(
   y_mm: number,
   tile_mm: number,
   tagSpec_mm: number,
+  subtagLevels: SubtagLevel[],
 ): void {
   // Faint border so the user can see the bounds of each tag on the back side
   // (no bitmap to give it shape).
@@ -467,13 +472,19 @@ function drawBackLabel(
     { text: formatTagSize(tagSpec_mm), bold: false },
   ];
   let sub = placement.tag.subtag;
+  let levelIdx = 0;
   while (sub) {
-    lines.push({ text: `> ${sub.family} #${sub.id}`, bold: false });
+    const lvl = subtagLevels[levelIdx];
+    const size = lvl ? formatTagSize(lvl.tagSize_mm) : "";
+    lines.push({ text: `> ${sub.family} #${sub.id}${size ? ` · ${size}` : ""}`, bold: false });
     sub = sub.subtag;
+    levelIdx++;
   }
 
-  // Scale the font so the centred block never exceeds ~85 % of the tile.
-  const fontPt = mm(tile_mm) * Math.min(0.18, 0.85 / (1.4 * lines.length));
+  // Scale font so the block fits vertically and no line overflows horizontally.
+  const maxGlyphs = Math.max(1, ...lines.map((l) => l.text.length));
+  let fontPt = mm(tile_mm) * Math.min(0.18, 0.85 / (1.4 * lines.length), 0.9 / (0.6 * maxGlyphs));
+  fontPt = Math.max(fontPt, mm(1.5));
   const lineHeight = fontPt * 1.4;
   const blockHeight = lineHeight * lines.length;
   const tagCenterY = mm(y_mm + tile_mm / 2);

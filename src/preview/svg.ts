@@ -1,6 +1,6 @@
 import { getFamily } from "../families";
-import type { LayoutPlan, TagSpec } from "../layout/types";
-import { tagCaptionLine } from "../tag-caption";
+import type { LayoutPlan, SubtagLevel, TagSpec } from "../layout/types";
+import { formatTagSize, tagCaptionLine } from "../tag-caption";
 
 /**
  * A source of per-tag bitmap images for the preview. Each tag is drawn as a
@@ -181,7 +181,7 @@ function renderQuietZoneLabel(
   const Q = plan.options.quietZone_mm;
   if (Q <= 0) return "";
   const mainText = tagCaptionLine(family, id, plan.tagSize_mm);
-  const subText = svgSubtagChainLabel(subtag);
+  const subText = svgSubtagChainLabel(subtag, plan.subtagLevels);
   const cx = x_mm + tile_mm / 2;
 
   if (subText) {
@@ -206,15 +206,19 @@ function renderQuietZoneLabel(
   );
 }
 
-function svgSubtagChainLabel(subtag: TagSpec | undefined): string {
+function svgSubtagChainLabel(subtag: TagSpec | undefined, levels: SubtagLevel[]): string {
   if (!subtag) return "";
   const parts: string[] = [];
   let s: TagSpec | undefined = subtag;
+  let i = 0;
   while (s) {
-    parts.push(`${s.family} #${s.id}`);
+    const lvl = levels[i];
+    const size = lvl ? ` · ${formatTagSize(lvl.tagSize_mm)}` : "";
+    parts.push(`> ${s.family} #${s.id}${size}`);
     s = s.subtag;
+    i++;
   }
-  return "> " + parts.join(" > ");
+  return parts.join("  ");
 }
 
 /** Four corner registration crosshairs, one `pageMargin_mm` in from each

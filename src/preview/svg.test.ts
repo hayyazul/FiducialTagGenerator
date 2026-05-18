@@ -146,7 +146,26 @@ describe("renderPlanToSvg", () => {
       { printLabelsInQuietZone: true },
     );
     expect(svg).toContain("tagCustom48h12 #0");
+    // subtagLevels is empty in the minimal plan, so no size suffix.
     expect(svg).toContain("&gt; tag36h11 #5");
+  });
+
+  it("shows sub-tag sizes in quiet-zone caption when subtagLevels is populated", () => {
+    const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 2, cutMargin_mm: 0 };
+    const plan = planSmallTagLayout(
+      [{ family: "tagCustom48h12", id: 0, subtag: { family: "tag36h11", id: 5 } }],
+      20,
+      square100,
+      opts,
+    );
+    plan.subtagLevels = [{ familyName: "tag36h11", tileSize_mm: 4, tagSize_mm: 3.2 }];
+    const svg = renderPlanToSvg(
+      plan,
+      0,
+      { imageHref: () => "data:image/png;base64,AAAA" },
+      { printLabelsInQuietZone: true },
+    );
+    expect(svg).toContain("&gt; tag36h11 #5 · 3.2 mm");
   });
 
   it("draws circle cuts for a circular plan and no line cuts", () => {
