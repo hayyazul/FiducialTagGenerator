@@ -5,9 +5,9 @@ import {
   StandardFonts,
   rgb,
 } from "pdf-lib";
-import type { BitsProvider } from "../families";
-import type { LayoutPlan, Placement } from "../layout/types";
-import { formatTagSize, tagCaptionLine } from "../tag-caption";
+import { type BitsProvider, getFamily } from "../families";
+import type { LayoutPlan, Placement, TagSpec } from "../layout/types";
+import { formatTagSize, subtagSizeLine, tagCaptionLine } from "../tag-caption";
 
 /**
  * Convert a LayoutPlan into a print-ready PDF byte stream.
@@ -307,15 +307,24 @@ function drawTag(
   plan: LayoutPlan,
   bits: BitsProvider,
 ): void {
-  const tile_mm = plan.tileSize_mm;
-  const grid = bits.bits(placement.tag.family, placement.tag.id);
+  drawTagBits(page, placement.tag, placement.x_mm, placement.y_mm, plan.tileSize_mm, bits);
+}
 
+function drawTagBits(
+  page: PDFPage,
+  tag: TagSpec,
+  x_mm: number,
+  y_mm: number,
+  tileSize_mm: number,
+  bits: BitsProvider,
+): void {
+  const grid = bits.bits(tag.family, tag.id);
   if (grid === null) {
     page.drawRectangle({
-      x: mm(placement.x_mm),
-      y: mm(placement.y_mm),
-      width: mm(tile_mm),
-      height: mm(tile_mm),
+      x: mm(x_mm),
+      y: mm(y_mm),
+      width: mm(tileSize_mm),
+      height: mm(tileSize_mm),
       borderColor: rgb(0.5, 0.5, 0.5),
       borderWidth: 0.4,
     });
@@ -324,20 +333,21 @@ function drawTag(
 
   const edge = grid.length;
   if (edge === 0) return;
-  const cell_mm = tile_mm / edge;
+  const cell_mm = tileSize_mm / edge;
   const cell_pt = mm(cell_mm);
-  // Tiny overlap (in points) to suppress hairline seams when the PDF is
-  // rasterized at low DPI by viewers/printers.
   const overlap_pt = 0.05;
+
+  const familyDef = getFamily(tag.family);
+  const cb = tag.subtag && familyDef?.centerBlock;
 
   for (let row = 0; row < edge; row++) {
     const r = grid[row]!;
     for (let col = 0; col < edge; col++) {
       if (!r[col]) continue;
-      // bits[0] is the top row of the bitmap; PDF y increases upward, so
-      // flip the row index when computing y.
-      const x_mm_local = placement.x_mm + col * cell_mm;
-      const y_mm_local = placement.y_mm + (edge - 1 - row) * cell_mm;
+      if (cb && row >= cb.row && row < cb.row + cb.size &&
+          col >= cb.col && col < cb.col + cb.size) continue;
+      const x_mm_local = x_mm + col * cell_mm;
+      const y_mm_local = y_mm + (edge - 1 - row) * cell_mm;
       page.drawRectangle({
         x: mm(x_mm_local),
         y: mm(y_mm_local),
@@ -346,6 +356,14 @@ function drawTag(
         color: rgb(0, 0, 0),
       });
     }
+  }
+
+  if (cb && tag.subtag) {
+    const module_mm = tileSize_mm / edge;
+    const subTile_mm = cb.size * module_mm;
+    const subX_mm = x_mm + cb.col * module_mm;
+    const subY_mm = y_mm + (edge - cb.row - cb.size) * module_mm;
+    drawTagBits(page, tag.subtag, subX_mm, subY_mm, subTile_mm, bits);
   }
 }
 
@@ -427,6 +445,11 @@ function drawBackLabel(
     { text: `#${placement.tag.id}`, bold: true },
     { text: formatTagSize(tagSpec_mm), bold: false },
   ];
+  let sub = placement.tag.subtag;
+  while (sub) {
+    lines.push({ text: `> ${sub.family} #${sub.id}`, bold: false });
+    sub = sub.subtag;
+  }
 
   // Each line takes ~18 % of tile size in font height; line spacing is 1.4×
   // the line size. Centre the resulting block in the tag's bounding box.
@@ -481,6 +504,8 @@ function drawPageFooter(
     `${families.join(",")} ${idLabel}`,
     `tag ${plan.tagSize_mm} mm, cell ${cell.toFixed(2)} mm`,
   ];
+  const subLine = subtagSizeLine(plan.subtagLevels);
+  if (subLine) parts.push(subLine);
   page.drawText(parts.join("   "), {
     x: mm(5),
     y: mm(3),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTagSize, tagCaptionLine } from "./tag-caption";
+import { formatTagSize, subtagSizeLine, tagCaptionLine } from "./tag-caption";
 
 describe("formatTagSize", () => {
   it("drops the decimals on a whole number of millimetres", () => {
@@ -23,5 +23,23 @@ describe("tagCaptionLine", () => {
 
   it("carries multi-digit ids and fractional sizes", () => {
     expect(tagCaptionLine("tag36h11", 587, 33.333)).toBe("tag36h11 #587 · 33.33 mm");
+  });
+});
+
+describe("subtagSizeLine", () => {
+  it("returns empty string for no sub-tags", () => {
+    expect(subtagSizeLine([])).toBe("");
+  });
+
+  it("formats a single nesting level", () => {
+    expect(subtagSizeLine([{ familyName: "tag36h11", tileSize_mm: 13.33, tagSize_mm: 10.67 }]))
+      .toBe("sub: tag36h11 10.67 mm");
+  });
+
+  it("chains multiple nesting levels with arrows", () => {
+    expect(subtagSizeLine([
+      { familyName: "tagCustom48h12", tileSize_mm: 13.33, tagSize_mm: 8 },
+      { familyName: "tag36h11", tileSize_mm: 2.67, tagSize_mm: 2.13 },
+    ])).toBe("sub: tagCustom48h12 8 mm → tag36h11 2.13 mm");
   });
 });

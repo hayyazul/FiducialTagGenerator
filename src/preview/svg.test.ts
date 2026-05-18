@@ -181,4 +181,48 @@ describe("renderPlanToSvg", () => {
     // radius = outerRadius + quietZone = 12
     expect(svg).toContain('r="12"');
   });
+
+  it("renders sub-tag overlays as additional images within the parent tile", () => {
+    const plan = planSmallTagLayout(
+      [{ family: "tagCustom48h12", id: 0, subtag: { family: "tag36h11", id: 0 } }],
+      50,
+      square100,
+      minimalOpts,
+    );
+    const href = "data:image/png;base64,AAAA";
+    const svg = renderPlanToSvg(plan, 0, { imageHref: () => href });
+    // Two images: one for the outer tag, one for the sub-tag overlay.
+    const imageCount = (svg.match(/<image /g) ?? []).length;
+    expect(imageCount).toBe(2);
+  });
+
+  it("renders no sub-tag overlay for non-recursive families", () => {
+    const plan = planSmallTagLayout(
+      [{ family: "tag36h11", id: 0 }],
+      50,
+      square100,
+      minimalOpts,
+    );
+    const href = "data:image/png;base64,AAAA";
+    const svg = renderPlanToSvg(plan, 0, { imageHref: () => href });
+    const imageCount = (svg.match(/<image /g) ?? []).length;
+    expect(imageCount).toBe(1);
+  });
+
+  it("renders multiple nesting levels as stacked images", () => {
+    const plan = planSmallTagLayout(
+      [{
+        family: "tagCustom48h12", id: 0,
+        subtag: { family: "tagCustom48h12", id: 1, subtag: { family: "tag36h11", id: 2 } },
+      }],
+      50,
+      square100,
+      minimalOpts,
+    );
+    const href = "data:image/png;base64,AAAA";
+    const svg = renderPlanToSvg(plan, 0, { imageHref: () => href });
+    // Three images: outer + level 1 subtag + level 2 subtag.
+    const imageCount = (svg.match(/<image /g) ?? []).length;
+    expect(imageCount).toBe(3);
+  });
 });

@@ -138,4 +138,33 @@ describe("renderPlan", () => {
     // The placements survived in the order the caller provided them.
     expect(plan.placements.map((p) => p.tag.id)).toEqual([13, 0, 586, 200, 42]);
   });
+
+  it("produces a valid PDF with subtags on placements", async () => {
+    const tags: TagSpec[] = Array.from({ length: 4 }, (_, i) => ({
+      family: "tagCustom48h12",
+      id: i,
+      subtag: { family: "tag36h11", id: i },
+    }));
+    const plan = planSmallTagLayout(tags, 20, square100, minimalOpts);
+    plan.subtagLevels = [{ familyName: "tag36h11", tileSize_mm: 4, tagSize_mm: 3.2 }];
+    const bytes = await renderPlan(plan, fakeBits, { printLabelsOnBack: true });
+    const reloaded = await PDFDocument.load(bytes);
+    expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
+  });
+
+  it("produces a valid PDF with deeply nested subtags (3 levels)", async () => {
+    const tags: TagSpec[] = [0, 1].map((id) => ({
+      family: "tagCustom48h12",
+      id,
+      subtag: {
+        family: "tagCustom48h12",
+        id,
+        subtag: { family: "tag36h11", id },
+      },
+    }));
+    const plan = planSmallTagLayout(tags, 20, square100, minimalOpts);
+    const bytes = await renderPlan(plan, fakeBits);
+    const reloaded = await PDFDocument.load(bytes);
+    expect(reloaded.getPageCount()).toBe(plan.pageCount + 1);
+  });
 });

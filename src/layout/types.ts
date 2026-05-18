@@ -9,10 +9,12 @@
  */
 
 /** A specific tag to render. `family` is an AprilTag family identifier
- *  (e.g. "tag36h11"); `id` is the index within that family. */
+ *  (e.g. "tag36h11"); `id` is the index within that family. For recursive
+ *  families, `subtag` holds a nested tag to render inside the center block. */
 export interface TagSpec {
   family: string;
   id: number;
+  subtag?: TagSpec;
 }
 
 export interface Paper {
@@ -71,6 +73,14 @@ export interface CutCircle {
   radius_mm: number;
 }
 
+/** One level of sub-tag nesting, carrying the geometry needed for info
+ *  display and PDF footer. Computed by the UI; consumed by renderers. */
+export interface SubtagLevel {
+  familyName: string;
+  tileSize_mm: number;
+  tagSize_mm: number;
+}
+
 export interface LayoutPlan {
   paper: Paper;
   options: LayoutOptions;
@@ -92,4 +102,6 @@ export interface LayoutPlan {
   cutSegments: CutSegment[];
   /** Empty for square plans; one entry per placement for circle plans. */
   cutCircles: CutCircle[];
+  /** Sub-tag nesting levels, outermost first. Empty when no sub-tags. */
+  subtagLevels: SubtagLevel[];
 }

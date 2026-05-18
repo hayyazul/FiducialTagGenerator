@@ -3,6 +3,9 @@ import {
   applyOccupiedMask,
   circleOccupiedMask,
   extractTagBits,
+  getFamily,
+  isRecursiveFamily,
+  listSquareFamilyNames,
   mosaicGrid,
   outerRadiusModulesFor,
   type TagFamilyDef,
@@ -173,6 +176,32 @@ describe("circleOccupiedMask", () => {
     // Core 7x7 at (2,2) distance 4.950 — inside radius.
     expect(mask[2]![2]).toBe(true);
     expect(mask[5]![5]).toBe(true);
+  });
+});
+
+describe("isRecursiveFamily", () => {
+  it("returns true for tagCustom48h12", () => {
+    const f = getFamily("tagCustom48h12")!;
+    expect(isRecursiveFamily(f)).toBe(true);
+    expect(f.centerBlock).toEqual({ row: 4, col: 4, size: 2 });
+  });
+
+  it("returns false for non-recursive families", () => {
+    for (const name of ["tag36h11", "tagStandard41h12", "tagStandard52h13", "tagCircle21h7", "tagCircle49h12"]) {
+      const f = getFamily(name)!;
+      expect(isRecursiveFamily(f)).toBe(false);
+      expect(f.centerBlock).toBeUndefined();
+    }
+  });
+});
+
+describe("listSquareFamilyNames", () => {
+  it("returns only square-shaped families", () => {
+    const names = listSquareFamilyNames();
+    expect(names).toContain("tag36h11");
+    expect(names).toContain("tagCustom48h12");
+    expect(names).not.toContain("tagCircle21h7");
+    expect(names).not.toContain("tagCircle49h12");
   });
 });
 

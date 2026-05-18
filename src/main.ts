@@ -1,7 +1,9 @@
 import {
   type BitsProvider,
   getFamily,
+  isRecursiveFamily,
   listFamilyNames,
+  listSquareFamilyNames,
   type TagFamilyDef,
 } from "./families";
 
@@ -31,12 +33,21 @@ function buildFamilyOptionsMarkup(): string {
   if (groupOpen) out += `</optgroup>`;
   return out;
 }
+function buildSquareFamilyOptionsMarkup(): string {
+  return listSquareFamilyNames()
+    .map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`)
+    .join("");
+}
+
+const MAX_SUBTAG_DEPTH = 5;
+
 import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { parseTagIdSpec } from "./ids";
 import { planSmallTagLayout, type CutShape } from "./layout/plan";
-import type { LayoutOptions, LayoutPlan, Paper, TagSpec } from "./layout/types";
+import type { LayoutOptions, LayoutPlan, Paper, SubtagLevel, TagSpec } from "./layout/types";
 import { renderPlanToSvg } from "./preview/svg";
 import { createTagImageProvider } from "./preview/tag-images";
+import { subtagSizeLine } from "./tag-caption";
 
 // pdf-lib (~180 KB gzipped) is the bulk of the app's JS and is only needed
 // when the user actually downloads. Pull it — and the renderer that depends
@@ -228,6 +239,7 @@ function setFieldError(id: string, message: string | null): void {
 
 function clearFieldErrors(): void {
   for (const id of ERROR_FIELD_IDS) setFieldError(id, null);
+  for (let d = 0; d < MAX_SUBTAG_DEPTH; d++) setFieldError(`subIds-${d}`, null);
 }
 
 /** Status line under the Download button: a short note, optionally flagged as
@@ -254,10 +266,17 @@ function failPreview(note: string, isProblem = true): void {
 function syncDownloadButton(): void {
   const btn = document.getElementById("downloadPdf") as HTMLButtonElement | null;
   if (!btn) return;
+  let allSubsLoaded = true;
+  if (currentPlan) {
+    for (const lvl of currentPlan.subtagLevels) {
+      if (!loadedFamilies.has(lvl.familyName)) { allSubsLoaded = false; break; }
+    }
+  }
   const ready =
     currentPlan !== null &&
     currentFamily !== null &&
-    loadedFamilies.has(currentFamily);
+    loadedFamilies.has(currentFamily) &&
+    allSubsLoaded;
   btn.disabled = !ready;
   btn.title = ready
     ? ""
@@ -288,7 +307,9 @@ async function handleDownload(): Promise<void> {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `apriltags-${currentFamily}-${currentPlan.placements.length}.pdf`;
+    const subNames = currentPlan.subtagLevels.map((l) => l.familyName).join("+");
+    const nameParts = subNames ? `${currentFamily}+${subNames}` : currentFamily;
+    a.download = `apriltags-${nameParts}-${currentPlan.placements.length}.pdf`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -325,6 +346,8 @@ function recompute(): void {
       },
     );
   }
+
+  syncSubtagChain();
 
   if (!familyDef) {
     setFieldError("family", "Pick a tag family.");
@@ -381,7 +404,18 @@ function recompute(): void {
     return;
   }
 
-  const tags: TagSpec[] = tagIds.map((id) => ({ family: effective.family, id }));
+  const tileSize_mm_pre = tileSize_mmFromTagSize(effective.tagSize_mm, familyDef);
+  const subtagResult = readSubtagChain(tagIds, tileSize_mm_pre, effective.family);
+  if (!subtagResult) {
+    failPreview("Fix the highlighted sub-tag fields to see a preview.");
+    return;
+  }
+
+  const tags: TagSpec[] = tagIds.map((id, i) => ({
+    family: effective.family,
+    id,
+    subtag: subtagResult.subtagForIndex(i),
+  }));
   const paper = PAPERS[effective.paperKey] ?? PAPERS.A4!;
   const options: LayoutOptions = {
     pageMargin_mm: effective.pageMargin_mm,
@@ -425,7 +459,9 @@ function recompute(): void {
     return;
   }
 
-  const loaded = loadedFamilies.has(effective.family);
+  plan.subtagLevels = subtagResult.levels;
+
+  const loaded = loadedFamilies.has(effective.family) && subtagResult.allFamiliesLoaded;
   const cellWidth_mm =
     cutShape.kind === "circle"
       ? 2 * (cutShape.outerRadius_mm + effective.quietZone_mm)
@@ -440,11 +476,13 @@ function recompute(): void {
     `quiet zone ${effective.quietZone_mm.toFixed(2)} mm; ` +
     `cut margin ${effective.cutMargin_mm.toFixed(2)} mm; ` +
     `printed cell ${cellWidth_mm.toFixed(2)} mm.`;
+  const subLine = subtagSizeLine(subtagResult.levels);
   const info = document.getElementById("info");
   if (info) {
     info.innerHTML =
       `<p class="summary">${escapeHtml(summary)}</p>` +
-      `<p>${escapeHtml(detail)}</p>`;
+      `<p>${escapeHtml(detail)}</p>` +
+      (subLine ? `<p>${escapeHtml(subLine)}</p>` : "");
   }
   const previewOpts = {
     printLabelsInQuietZone:
@@ -471,6 +509,179 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/** Ensure the sub-tag chain UI matches the current family selection chain.
+ *  Called from `recompute()`. Builds or tears down sub-tag pickers as needed. */
+function syncSubtagChain(): void {
+  const container = document.getElementById("subtag-chain");
+  if (!container) return;
+
+  let depth = 0;
+  let parentFamilyName = field("family").value;
+  let parentDef = getFamily(parentFamilyName);
+
+  while (depth < MAX_SUBTAG_DEPTH) {
+    if (!parentDef || !isRecursiveFamily(parentDef)) {
+      // Remove this depth and all deeper ones.
+      removeSubtagLevelsFrom(container, depth);
+      return;
+    }
+    let levelEl = container.querySelector(`[data-depth="${depth}"]`) as HTMLElement | null;
+    if (!levelEl) {
+      levelEl = createSubtagLevel(depth);
+      container.appendChild(levelEl);
+    }
+    const subFamilySelect = document.getElementById(`subFamily-${depth}`) as HTMLSelectElement | null;
+    if (!subFamilySelect) return;
+    const subFamilyName = subFamilySelect.value;
+    const subDef = getFamily(subFamilyName);
+
+    const inheritBox = document.getElementById(`subInherit-${depth}`) as HTMLInputElement | null;
+    const subIdsInput = document.getElementById(`subIds-${depth}`) as HTMLInputElement | null;
+    if (inheritBox && subIdsInput) {
+      subIdsInput.disabled = inheritBox.checked;
+      if (inheritBox.checked) {
+        const parentIds = depth === 0
+          ? field("ids").value
+          : (document.getElementById(`subIds-${depth - 1}`) as HTMLInputElement | null)?.value ?? "";
+        subIdsInput.value = parentIds;
+      }
+    }
+
+    parentFamilyName = subFamilyName;
+    parentDef = subDef;
+    depth++;
+  }
+  removeSubtagLevelsFrom(container, depth);
+}
+
+function createSubtagLevel(depth: number): HTMLElement {
+  const div = document.createElement("div");
+  div.dataset.depth = String(depth);
+  div.style.marginLeft = "1.5rem";
+  div.style.marginTop = "0.5rem";
+  div.style.borderLeft = "2px solid #ccc";
+  div.style.paddingLeft = "0.75rem";
+  const sqOpts = buildSquareFamilyOptionsMarkup();
+  div.innerHTML = `
+    <label style="font-weight:600;font-size:0.9em">Sub-tag (level ${depth + 1})</label>
+    <label>Family
+      <select id="subFamily-${depth}">${sqOpts}</select>
+    </label>
+    <label style="font-size:0.85em">
+      <input type="checkbox" id="subInherit-${depth}" checked> Inherit tag IDs from outer tag
+    </label>
+    <label>Tag IDs
+      <input id="subIds-${depth}" type="text" value="0-19" disabled style="color:#999">
+      <span class="field-error" id="subIds-${depth}-err"></span>
+    </label>
+  `;
+  return div;
+}
+
+function removeSubtagLevelsFrom(container: HTMLElement, fromDepth: number): void {
+  const toRemove: HTMLElement[] = [];
+  container.querySelectorAll("[data-depth]").forEach((el) => {
+    if (Number((el as HTMLElement).dataset.depth) >= fromDepth) {
+      toRemove.push(el as HTMLElement);
+    }
+  });
+  for (const el of toRemove) el.remove();
+}
+
+interface SubtagChainResult {
+  subtagForIndex: (i: number) => TagSpec | undefined;
+  levels: SubtagLevel[];
+  allFamiliesLoaded: boolean;
+}
+
+/** Read the sub-tag chain from the form, validate, and return a function that
+ *  builds the subtag for each parent index. Returns undefined on validation failure. */
+function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamilyName: string): SubtagChainResult | null {
+  let depth = 0;
+  let curFamilyName = parentFamilyName;
+  let curDef = getFamily(curFamilyName);
+  let curIds = parentIds;
+  let curTile_mm = parentTile_mm;
+
+  const levels: SubtagLevel[] = [];
+  const idChains: number[][] = [];
+  let allLoaded = true;
+
+  while (depth < MAX_SUBTAG_DEPTH && curDef && isRecursiveFamily(curDef)) {
+    const subSelect = document.getElementById(`subFamily-${depth}`) as HTMLSelectElement | null;
+    if (!subSelect) break;
+    const subFamilyName = subSelect.value;
+    const subDef = getFamily(subFamilyName);
+    if (!subDef) break;
+
+    const inheritBox = document.getElementById(`subInherit-${depth}`) as HTMLInputElement | null;
+    const subIdsInput = document.getElementById(`subIds-${depth}`) as HTMLInputElement | null;
+    const inheriting = inheritBox?.checked ?? true;
+
+    let subIds: number[];
+    if (inheriting) {
+      subIds = curIds;
+    } else {
+      try {
+        subIds = parseTagIdSpec(subIdsInput?.value ?? "");
+      } catch (e) {
+        setFieldError(`subIds-${depth}`, e instanceof Error ? e.message : String(e));
+        return null;
+      }
+      if (subIds.length !== curIds.length) {
+        setFieldError(`subIds-${depth}`,
+          `Must have exactly ${curIds.length} IDs to match the ${depth === 0 ? "outer" : "level " + depth} tag count.`);
+        return null;
+      }
+    }
+
+    const maxSubId = subIds.reduce((m, x) => Math.max(m, x), 0);
+    if (maxSubId >= subDef.validTagCount) {
+      setFieldError(`subIds-${depth}`,
+        `${subFamilyName} has ${subDef.validTagCount} tags (IDs 0–${subDef.validTagCount - 1}); ID ${maxSubId} doesn't exist.`);
+      return null;
+    }
+
+    const cb = curDef.centerBlock!;
+    const module_mm = curTile_mm / curDef.tileSize_px;
+    const subTile_mm = cb.size * module_mm;
+    const subTagSize_mm = subTile_mm * (subDef.widthAtBorder_modules / subDef.tileSize_px);
+
+    levels.push({ familyName: subFamilyName, tileSize_mm: subTile_mm, tagSize_mm: subTagSize_mm });
+    idChains.push(subIds);
+
+    if (!loadedFamilies.has(subFamilyName)) {
+      allLoaded = false;
+      void loadFamily(subFamilyName).then(
+        (bm) => { loadedFamilies.set(subFamilyName, bm); syncDownloadButton(); recompute(); },
+        (err: unknown) => { console.error("failed to load sub-family", subFamilyName, err); },
+      );
+    }
+
+    curFamilyName = subFamilyName;
+    curDef = subDef;
+    curIds = subIds;
+    curTile_mm = subTile_mm;
+    depth++;
+  }
+
+  if (levels.length === 0) {
+    return { subtagForIndex: () => undefined, levels: [], allFamiliesLoaded: true };
+  }
+
+  return {
+    subtagForIndex(i: number): TagSpec | undefined {
+      let spec: TagSpec | undefined;
+      for (let d = levels.length - 1; d >= 0; d--) {
+        spec = { family: levels[d]!.familyName, id: idChains[d]![i]!, subtag: spec };
+      }
+      return spec;
+    },
+    levels,
+    allFamiliesLoaded: allLoaded,
+  };
+}
+
 function bootstrap(): void {
   const app = document.getElementById("app");
   if (!app) return;
@@ -486,6 +697,7 @@ function bootstrap(): void {
             </label>
             <label>Tag IDs <input id="ids" type="text" value="0-19"><span class="field-error" id="ids-err"></span></label>
             <span style="color:#888;font-size:0.85em">single IDs and ranges, e.g. 0-9, 12, 15-20</span>
+            <div id="subtag-chain"></div>
           </fieldset>
           <fieldset>
             <legend>Paper</legend>

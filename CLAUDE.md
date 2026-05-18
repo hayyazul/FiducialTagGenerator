@@ -7,9 +7,8 @@ that generates printable PDFs of AprilTags. The user specifies tag family,
 ID range, and physical tag size; the app produces a print-ready PDF along
 with assembly guidance where applicable.
 
-**Current scope: small tags only** — tags whose side length is strictly less
-than `min(paper_width, paper_height)` after accounting for page margins,
-quiet zone, and cut margin. The app must pack as many tags as fit per page.
+
+The app must pack as many tags as fit per page after accounting for a quiet zone and cut margins.
 Multi-page (large) tag support is deferred but the architecture must not
 preclude it: a separate layout algorithm will be added later behind the
 same interface.
@@ -18,35 +17,13 @@ Source of truth for tag bitmaps is the official `apriltag-imgs` repository.
 The app does not reimplement tag-family math; it scales known-correct
 bitmaps with nearest-neighbor (or emits SVG rectangles directly).
 
-## Three-part plan
+# Continuous Summary Updates
 
-**Part 1 — Domain model and layout engine.** Define the core types
-(`TagSpec`, `Paper`, `LayoutOptions`, `LayoutPlan`, `Placement`,
-`CutSegment`). Implement `planSmallTagLayout(tags, paper, options) →
-LayoutPlan` as a pure function: given identical-square items and a page
-rectangle, compute grid capacity, assign tags to pages, deduplicate shared
-cut lines into a `CutSegment[]`. Margin types are kept distinct in the
-options object (`pageMargin`, `quietZone`, `cutMargin`, `interTagGap`);
-they are never collapsed into a single buffer parameter. Support both
-queries: "given size, how many fit" and "given count, what's the largest
-size." This module has no DOM, no PDF, no I/O.
+Instead of reading the entire project every time you need to make a change, read STRUCTURE.md, then read only relevant files. I repeat, you do NOT need to read everything or explore the filestructure of a project. You just need to read STRUCTURE.md.
 
-**Part 2 — PDF renderer.** Implement `renderPlan(plan) → Uint8Array`
-(or `Blob`) using `pdf-lib`. The renderer consumes a `LayoutPlan` and
-knows nothing about how it was produced. Tags are drawn as filled
-rectangles in vector space (one rect per black bit), not as rasterized
-images. Cut lines, registration marks, and per-tag labels (ID, family,
-size) are rendered from the plan's geometry. A calibration sheet (100 mm
-reference square) is the first page of every output.
+Create or update a file called STRUCTURE.md. It contains a summary of the architecture and structure of the project, a filemap containing relevant files, and each a 1-sentence summary for every file (not all files are relevant, i.e. everything in .git/ should be excluded). Update this whenever you touch or modify a file. The sentence should describe the role of the file and its place in the broader architecture of the project.
 
-**Part 3 — UI shell.** A single-page TypeScript app: form inputs for
-family, ID range, tag size, paper size, margins; a live SVG preview that
-renders the same `LayoutPlan` the PDF will use; a download button. The
-preview and the PDF must be visually identical because they share the
-plan. No backend calls; everything runs in the browser. The UI imports
-the layout engine and renderer as separate modules.
-
-## Practices
+# Practices
 
 Derived from *A Philosophy of Software Design* (Ousterhout).
 

@@ -1,4 +1,5 @@
-import type { LayoutPlan } from "../layout/types";
+import { getFamily } from "../families";
+import type { LayoutPlan, TagSpec } from "../layout/types";
 import { tagCaptionLine } from "../tag-caption";
 
 /**
@@ -66,10 +67,11 @@ export function renderPlanToSvg(
         href !== null
           ? renderTagImage(p.x_mm, yTop, tile, href)
           : renderPlaceholder(p.x_mm, yTop, tile, p.tag.family, p.tag.id);
+      const subOverlays = renderSubtagOverlays(p.tag.subtag, p.tag.family, p.x_mm, yTop, tile, images);
       const quietLabel = opts.printLabelsInQuietZone
         ? renderQuietZoneLabel(plan, p.x_mm, p.y_mm, tile, p.tag.family, p.tag.id, flipY)
         : "";
-      return body + quietLabel;
+      return body + subOverlays + quietLabel;
     })
     .join("");
 
@@ -116,6 +118,33 @@ function renderTagImage(
     `<image x="${x_mm}" y="${yTop_svg}" width="${tile_mm}" height="${tile_mm}" ` +
     `preserveAspectRatio="none" style="image-rendering:pixelated" href="${href}"/>`
   );
+}
+
+function renderSubtagOverlays(
+  subtag: TagSpec | undefined,
+  parentFamilyName: string,
+  parentX_mm: number,
+  parentYTop_svg: number,
+  parentTile_mm: number,
+  images: TagImageProvider | undefined,
+): string {
+  if (!subtag) return "";
+  const parentDef = getFamily(parentFamilyName);
+  const cb = parentDef?.centerBlock;
+  if (!cb) return "";
+
+  const module_mm = parentTile_mm / parentDef.tileSize_px;
+  const subTile_mm = cb.size * module_mm;
+  const subX = parentX_mm + cb.col * module_mm;
+  const subYTop = parentYTop_svg + cb.row * module_mm;
+
+  const href = images?.imageHref(subtag.family, subtag.id) ?? null;
+  let svg = href !== null
+    ? renderTagImage(subX, subYTop, subTile_mm, href)
+    : renderPlaceholder(subX, subYTop, subTile_mm, subtag.family, subtag.id);
+
+  svg += renderSubtagOverlays(subtag.subtag, subtag.family, subX, subYTop, subTile_mm, images);
+  return svg;
 }
 
 function renderPlaceholder(

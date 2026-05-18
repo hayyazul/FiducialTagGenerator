@@ -62,6 +62,11 @@ export interface TagFamilyDef {
    *  `outerRadius_modules · (tile_mm / tileSize_px) + quietZone_mm`.
    *  Absent for square families. */
   outerRadius_modules?: number;
+  /** For recursive families: the always-black center block that can host
+   *  a sub-tag. `row`/`col` are 0-indexed from the tile's top-left;
+   *  `size` is the block's side length in modules. Absent for
+   *  non-recursive families. */
+  centerBlock?: { row: number; col: number; size: number };
 }
 
 // Display order is the iteration order of this object. The UI groups
@@ -103,6 +108,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     validTagCount: 42211,
     group: "Custom",
     shape: "square",
+    centerBlock: { row: 4, col: 4, size: 2 },
   },
   tagCircle21h7: {
     name: "tagCircle21h7",
@@ -135,6 +141,14 @@ export function getFamily(name: string): TagFamilyDef | undefined {
 
 export function listFamilyNames(): string[] {
   return Object.keys(FAMILIES);
+}
+
+export function isRecursiveFamily(family: TagFamilyDef): boolean {
+  return family.centerBlock !== undefined;
+}
+
+export function listSquareFamilyNames(): string[] {
+  return Object.keys(FAMILIES).filter((n) => FAMILIES[n]!.shape === "square");
 }
 
 /** Number of tile columns and rows in a mosaic of the given pixel size,

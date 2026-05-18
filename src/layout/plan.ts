@@ -167,7 +167,7 @@ export function planSmallTagLayout(
       ? computeCutCircles(placements, tileSize_mm, cutShape, options)
       : [];
 
-  return { paper, options, tileSize_mm, tagSize_mm, pageCount, placements, cutSegments, cutCircles };
+  return { paper, options, tileSize_mm, tagSize_mm, pageCount, placements, cutSegments, cutCircles, subtagLevels: [] };
 }
 
 /** One CutCircle per placement: centre at the tile centre, radius from the
