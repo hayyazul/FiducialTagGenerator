@@ -69,7 +69,7 @@ export function renderPlanToSvg(
           : renderPlaceholder(p.x_mm, yTop, tile, p.tag.family, p.tag.id);
       const subOverlays = renderSubtagOverlays(p.tag.subtag, p.tag.family, p.x_mm, yTop, tile, images);
       const quietLabel = opts.printLabelsInQuietZone
-        ? renderQuietZoneLabel(plan, p.x_mm, p.y_mm, tile, p.tag.family, p.tag.id, flipY)
+        ? renderQuietZoneLabel(plan, p.x_mm, p.y_mm, tile, p.tag.family, p.tag.id, p.tag.subtag, flipY)
         : "";
       return body + subOverlays + quietLabel;
     })
@@ -175,19 +175,46 @@ function renderQuietZoneLabel(
   tile_mm: number,
   family: string,
   id: number,
+  subtag: TagSpec | undefined,
   flipY: (y_mm: number) => number,
 ): string {
   const Q = plan.options.quietZone_mm;
   if (Q <= 0) return "";
-  const text = tagCaptionLine(family, id, plan.tagSize_mm);
-  // Courier advance = 0.6 em per glyph; keep the line within the tag's width.
-  const fontSize_mm = Math.max(0.18, Math.min(Q * 0.6, tile_mm / (0.6 * text.length)));
+  const mainText = tagCaptionLine(family, id, plan.tagSize_mm);
+  const subText = svgSubtagChainLabel(subtag);
+  const cx = x_mm + tile_mm / 2;
+
+  if (subText) {
+    const halfQ = Q * 0.3;
+    let out = "";
+    for (const [text, baselineFrac] of [[mainText, 0.52], [subText, 0.12]] as const) {
+      const fontSize = Math.max(0.18, Math.min(halfQ, tile_mm / (0.6 * text.length)));
+      out +=
+        `<text x="${cx}" y="${flipY(y_mm - Q + Q * baselineFrac)}" ` +
+        `font-size="${fontSize}" text-anchor="middle" fill="${QUIET_LABEL}" ` +
+        `font-family="monospace">${escapeXml(text)}</text>`;
+    }
+    return out;
+  }
+
+  const fontSize_mm = Math.max(0.18, Math.min(Q * 0.6, tile_mm / (0.6 * mainText.length)));
   const baseline_mm = y_mm - Q + 0.28 * Q;
   return (
-    `<text x="${x_mm + tile_mm / 2}" y="${flipY(baseline_mm)}" ` +
+    `<text x="${cx}" y="${flipY(baseline_mm)}" ` +
     `font-size="${fontSize_mm}" text-anchor="middle" fill="${QUIET_LABEL}" ` +
-    `font-family="monospace">${escapeXml(text)}</text>`
+    `font-family="monospace">${escapeXml(mainText)}</text>`
   );
+}
+
+function svgSubtagChainLabel(subtag: TagSpec | undefined): string {
+  if (!subtag) return "";
+  const parts: string[] = [];
+  let s: TagSpec | undefined = subtag;
+  while (s) {
+    parts.push(`${s.family} #${s.id}`);
+    s = s.subtag;
+  }
+  return "> " + parts.join(" > ");
 }
 
 /** Four corner registration crosshairs, one `pageMargin_mm` in from each

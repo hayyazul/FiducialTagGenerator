@@ -131,6 +131,24 @@ describe("renderPlanToSvg", () => {
     expect(svg).not.toContain("tag36h11 #5 · 20 mm");
   });
 
+  it("shows sub-tag info in the quiet-zone caption when a subtag is present", () => {
+    const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 2, cutMargin_mm: 0 };
+    const plan = planSmallTagLayout(
+      [{ family: "tagCustom48h12", id: 0, subtag: { family: "tag36h11", id: 5 } }],
+      20,
+      square100,
+      opts,
+    );
+    const svg = renderPlanToSvg(
+      plan,
+      0,
+      { imageHref: () => "data:image/png;base64,AAAA" },
+      { printLabelsInQuietZone: true },
+    );
+    expect(svg).toContain("tagCustom48h12 #0");
+    expect(svg).toContain("&gt; tag36h11 #5");
+  });
+
   it("draws circle cuts for a circular plan and no line cuts", () => {
     const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
     const plan = planSmallTagLayout(

@@ -253,19 +253,40 @@ function drawQuietZoneLabel(
   const Q_mm = plan.options.quietZone_mm;
   if (Q_mm <= 0) return;
   const tile_mm = plan.tileSize_mm;
-  const text = tagCaptionLine(placement.tag.family, placement.tag.id, plan.tagSize_mm);
-  // Courier's advance width is 0.6 em per glyph, so a line of `n` glyphs is
-  // `0.6 · size · n` wide; pick the largest size that is both ≤ 0.6× the
-  // quiet-zone band and narrow enough to stay within the tag's width.
-  const natural_mm = Q_mm * 0.6;
-  const widthLimited_mm = tile_mm / (0.6 * text.length);
-  const fontPt = Math.max(0.5, mm(Math.min(natural_mm, widthLimited_mm)));
-  const w = font.widthOfTextAtSize(text, fontPt);
-  const x = mm(placement.x_mm + tile_mm / 2) - w / 2;
-  // Baseline ~28 % up from the cut line, putting the glyph body in the lower
-  // ~60 % of the band.
-  const y = mm(placement.y_mm - Q_mm + Q_mm * 0.28);
-  page.drawText(text, { x, y, font, size: fontPt, color: rgb(0, 0, 0) });
+  const mainText = tagCaptionLine(placement.tag.family, placement.tag.id, plan.tagSize_mm);
+  const subText = subtagChainLabel(placement.tag.subtag);
+
+  if (subText) {
+    // Two lines: main caption and sub-tag chain, each gets half the band.
+    const halfQ = Q_mm * 0.3;
+    for (const [text, baselineFrac] of [[mainText, 0.52], [subText, 0.12]] as const) {
+      const widthLimited = tile_mm / (0.6 * text.length);
+      const fontPt = Math.max(0.5, mm(Math.min(halfQ, widthLimited)));
+      const w = font.widthOfTextAtSize(text, fontPt);
+      const x = mm(placement.x_mm + tile_mm / 2) - w / 2;
+      const y = mm(placement.y_mm - Q_mm + Q_mm * baselineFrac);
+      page.drawText(text, { x, y, font, size: fontPt, color: rgb(0, 0, 0) });
+    }
+  } else {
+    const natural_mm = Q_mm * 0.6;
+    const widthLimited_mm = tile_mm / (0.6 * mainText.length);
+    const fontPt = Math.max(0.5, mm(Math.min(natural_mm, widthLimited_mm)));
+    const w = font.widthOfTextAtSize(mainText, fontPt);
+    const x = mm(placement.x_mm + tile_mm / 2) - w / 2;
+    const y = mm(placement.y_mm - Q_mm + Q_mm * 0.28);
+    page.drawText(mainText, { x, y, font, size: fontPt, color: rgb(0, 0, 0) });
+  }
+}
+
+function subtagChainLabel(subtag: TagSpec | undefined): string {
+  if (!subtag) return "";
+  const parts: string[] = [];
+  let s: TagSpec | undefined = subtag;
+  while (s) {
+    parts.push(`${s.family} #${s.id}`);
+    s = s.subtag;
+  }
+  return "> " + parts.join(" > ");
 }
 
 function drawRegistrationCorners(page: PDFPage, plan: LayoutPlan): void {
@@ -451,9 +472,8 @@ function drawBackLabel(
     sub = sub.subtag;
   }
 
-  // Each line takes ~18 % of tile size in font height; line spacing is 1.4×
-  // the line size. Centre the resulting block in the tag's bounding box.
-  const fontPt = mm(tile_mm * 0.18);
+  // Scale the font so the centred block never exceeds ~85 % of the tile.
+  const fontPt = mm(tile_mm) * Math.min(0.18, 0.85 / (1.4 * lines.length));
   const lineHeight = fontPt * 1.4;
   const blockHeight = lineHeight * lines.length;
   const tagCenterY = mm(y_mm + tile_mm / 2);
