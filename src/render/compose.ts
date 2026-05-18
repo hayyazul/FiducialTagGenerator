@@ -141,7 +141,12 @@ function drawRegistrationMarks(canvas: Canvas, plan: LayoutPlan): void {
 /** Recursive marker draw: outer tag first, then any nested sub-tag
  *  inside its parent's center block. The recursion lives here (rather
  *  than the per-backend code) so every format gets identical nesting
- *  behaviour. */
+ *  behaviour. When a sub-tag exists, the parent's center-block cells
+ *  are masked out before reaching the canvas so vector backends (PDF)
+ *  don't paint cells that the sub-tag will immediately cover. SVG
+ *  backends are unaffected — the sub-tag's PNG would have covered the
+ *  parent's PNG either way — but the cache key differs so the masked
+ *  and unmasked versions don't collide. */
 function drawMarkerAt(
   canvas: Canvas,
   markers: BitsProvider,
@@ -150,23 +155,27 @@ function drawMarkerAt(
   y_mm: number,
   tile_mm: number,
 ): void {
+  const def = getFamily(tag.family);
   const bits = markers.bits(tag.family, tag.id);
+
   if (bits === null || bits.length === 0) {
     drawPlaceholder(canvas, x_mm, y_mm, tile_mm, tag.family, tag.id);
   } else {
+    const cb = tag.subtag ? def?.centerBlock : undefined;
+    const drawBits = cb ? maskCenterBlock(bits, cb) : bits;
     canvas.drawBitGrid({
-      bits,
+      bits: drawBits,
       x_mm,
       y_mm,
       cellSize_mm: tile_mm / bits.length,
-      cacheKey: `${tag.family}#${tag.id}`,
+      cacheKey: cb
+        ? `${tag.family}#${tag.id}+sub`
+        : `${tag.family}#${tag.id}`,
     });
   }
 
-  if (!tag.subtag) return;
-  const def = getFamily(tag.family);
-  const cb = def?.centerBlock;
-  if (!def || !cb) return;
+  if (!tag.subtag || !def?.centerBlock) return;
+  const cb = def.centerBlock;
   const module_mm = tile_mm / def.tileSize_px;
   const subTile_mm = cb.size * module_mm;
   // centerBlock is given with row 0 at the *top* of the parent tile; in
@@ -174,6 +183,31 @@ function drawMarkerAt(
   const subX = x_mm + cb.col * module_mm;
   const subY = y_mm + tile_mm - (cb.row + cb.size) * module_mm;
   drawMarkerAt(canvas, markers, tag.subtag, subX, subY, subTile_mm);
+}
+
+/** Return a copy of `bits` with every cell inside `cb` set to `false`.
+ *  The original grid is untouched. Used to keep a parent marker from
+ *  drawing into the region a sub-tag will immediately overlay. */
+function maskCenterBlock(
+  bits: readonly (readonly boolean[])[],
+  cb: { row: number; col: number; size: number },
+): boolean[][] {
+  const out: boolean[][] = [];
+  for (let r = 0; r < bits.length; r++) {
+    const row = bits[r]!;
+    if (r < cb.row || r >= cb.row + cb.size) {
+      out.push([...row]);
+      continue;
+    }
+    const next: boolean[] = [];
+    for (let c = 0; c < row.length; c++) {
+      next.push(
+        c >= cb.col && c < cb.col + cb.size ? false : row[c]!,
+      );
+    }
+    out.push(next);
+  }
+  return out;
 }
 
 function drawPlaceholder(

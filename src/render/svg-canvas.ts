@@ -204,12 +204,15 @@ export class SvgCanvas implements Canvas {
       const px = opts.cx_mm + opts.radius_mm * Math.cos(alpha_canvas);
       const py_canvas = opts.cy_mm + opts.radius_mm * Math.sin(alpha_canvas);
       const py_svg = this.flipY(py_canvas);
-      // SVG rotation is CW for positive degrees; the glyph baseline
-      // should lie tangent to the arc. In SVG-space angle equals
-      // -alpha_canvas, and the tangent direction is the SVG-angle minus
-      // 90°.
+      // Glyph "top" points radially *inward* for sign=+1 (bottom-of-
+      // arc text reads upright to a viewer looking at the page) and
+      // radially *outward* for sign=-1 (top-of-arc / inside-curve text
+      // is intentionally upside-down). Canvas-space (y-up, CCW
+      // positive) rotation is `alpha + sign * π/2`; flipping to SVG
+      // (y-down, CW positive) negates that, which simplifies to
+      // `alpha_svg - sign * π/2` since alpha_svg = -alpha_canvas.
       const alpha_svg = -alpha_canvas;
-      const rotDeg = ((alpha_svg - Math.PI / 2) * 180) / Math.PI;
+      const rotDeg = ((alpha_svg - sign * (Math.PI / 2)) * 180) / Math.PI;
       this.parts.push(
         `<text x="${px}" y="${py_svg}" font-size="${opts.fontSize_mm}" ` +
           `text-anchor="middle" fill="${fill}" ` +

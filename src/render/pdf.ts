@@ -1,56 +1,40 @@
-import {
-  PDFDocument,
-  type PDFFont,
-  type PDFPage,
-  StandardFonts,
-  degrees,
-  rgb,
-} from "pdf-lib";
-import { type BitsProvider, getFamily } from "../families";
-import type { LayoutPlan, Placement, SubtagLevel, TagSpec } from "../layout/types";
-import { formatTagSize, subtagSizeLine, tagCaptionLine } from "../tag-caption";
-
 /**
- * Convert a LayoutPlan into a print-ready PDF byte stream.
+ * Top-level PDF orchestrator. Embeds fonts once for the document, then
+ * for every page constructs a fresh `PdfCanvas` and dispatches to
+ * either `composePage` (the shared front-page renderer) or one of the
+ * PDF-only page generators in `pdf-pages.ts` (calibration sheet, back
+ * sheet). The page footer is layered on top with `drawPageFooter` after
+ * each page's main content.
  *
- * Output structure (default):
+ * Output structure:
  *   Page 1     calibration sheet (100 mm reference square + tick rulers)
- *   Page 2..N  layout pages — one per plan.pageCount, in plan order
+ *   Page 2..N  one layout page per `plan.pageCount`. With
+ *              `printLabelsOnBack: true`, each layout page is followed
+ *              by a back sheet whose labels are mirrored along the
+ *              vertical axis for long-edge duplex printing.
  *
- * With `printLabelsOnBack: true`, every layout page is followed by a "back"
- * page whose tag-info text is laid out mirrored along the page's vertical
- * axis (long-edge / horizontal-flip duplex). Printing the document
- * double-sided produces sheets where each cut tag carries family/id text
- * on its reverse.
- *
- * With `printLabelsInQuietZone: true`, the same caption is set inside each
- * tag's bottom quiet-zone band on the front, so the cut-out tag carries its
- * own identification without needing a duplex print.
- *
- * Tags are drawn as filled vector rectangles, one per black bit, never as
- * rasterized images. Cut lines, registration marks, and per-tag labels are
- * derived from the plan's geometry. The renderer never assumes contiguous
- * tag IDs — it iterates `plan.placements` directly.
- *
- * Coordinate handoff:
- *   - Plan: bottom-left origin, millimetres.
- *   - PDF: bottom-left origin, points (1 mm = 72/25.4 pt).
- *   - Bit grids: bits[row][col] with row 0 at the *top* of the tag, so we
- *     flip rows when emitting them into PDF y-up space.
- *
- * The renderer never throws when a tag is missing from the BitsProvider; it
- * draws a light-bordered placeholder square so the layout is still legible
- * (e.g. if the mosaic is still loading at render time).
+ * Drawing of tag bits stays vector — `PdfCanvas.drawBitGrid` emits one
+ * filled rectangle per black cell. No raster image embedding.
  */
+import { PDFDocument } from "pdf-lib";
+import type { BitsProvider } from "../families";
+import type { LayoutPlan } from "../layout/types";
+import { composePage } from "./compose";
+import { PdfCanvas, embedPdfFonts } from "./pdf-canvas";
+import { drawBackPage, drawCalibrationPage, drawPageFooter } from "./pdf-pages";
+
+const MM_TO_PT = 72 / 25.4;
+const mm = (v: number): number => v * MM_TO_PT;
+
 export interface RenderOptions {
-  /** Emit a mirrored "back" page after every layout page, with each tag's
-   *  family/id printed where the tag's reverse will land under long-edge
-   *  duplex printing. Default: false. */
+  /** Emit a mirrored "back" page after every layout page so a long-edge
+   *  duplex print yields cut tags whose reverse carries family / id /
+   *  size text. Default: false. */
   printLabelsOnBack?: boolean;
-  /** Set a one-line "family #id · size" caption inside each tag's bottom
-   *  quiet-zone band on the front layout page, so the caption stays on the
-   *  tag once it is cut out. Sized to the quiet zone (small — best at ~20 mm
-   *  tags or larger). Default: false. */
+  /** Set the one-line "family #id · size" caption inside each tag's
+   *  bottom quiet-zone band on the front layout page, so the caption
+   *  stays on the tag once it is cut out. Sized to the quiet zone
+   *  (small — best at ~20 mm tags or larger). Default: false. */
   printLabelsInQuietZone?: boolean;
 }
 
@@ -61,586 +45,32 @@ export async function renderPlan(
 ): Promise<Uint8Array> {
   const printBack = options.printLabelsOnBack ?? false;
   const labelInQuietZone = options.printLabelsInQuietZone ?? false;
+
   const doc = await PDFDocument.create();
   doc.setTitle(`AprilTag layout (${plan.placements.length} tags)`);
   doc.setProducer("AprilTagPDFGenerator");
-  const font = await doc.embedFont(StandardFonts.Courier);
-  const fontBold = await doc.embedFont(StandardFonts.CourierBold);
 
-  drawCalibrationPage(doc, font);
+  const fonts = await embedPdfFonts(doc);
+
+  const calibrationPage = doc.addPage([mm(210), mm(297)]);
+  const calibrationCanvas = new PdfCanvas(calibrationPage, fonts, 210, 297);
+  drawCalibrationPage(calibrationCanvas);
+
   for (let p = 0; p < plan.pageCount; p++) {
-    drawTagPage(doc, font, plan, p, bits, labelInQuietZone);
-    if (printBack) drawBackPage(doc, font, fontBold, plan, p);
+    const layoutPage = doc.addPage([mm(plan.paper.width_mm), mm(plan.paper.height_mm)]);
+    const layoutCanvas = new PdfCanvas(layoutPage, fonts, plan.paper.width_mm, plan.paper.height_mm);
+    composePage(plan, p, layoutCanvas, bits, {
+      printLabelsInQuietZone: labelInQuietZone,
+    });
+    drawPageFooter(layoutCanvas, plan, p, false);
+
+    if (printBack) {
+      const backPage = doc.addPage([mm(plan.paper.width_mm), mm(plan.paper.height_mm)]);
+      const backCanvas = new PdfCanvas(backPage, fonts, plan.paper.width_mm, plan.paper.height_mm);
+      drawBackPage(backCanvas, plan, p);
+      drawPageFooter(backCanvas, plan, p, true);
+    }
   }
+
   return doc.save();
-}
-
-const MM_TO_PT = 72 / 25.4;
-const mm = (v: number): number => v * MM_TO_PT;
-
-// -------------------- calibration page --------------------
-
-function drawCalibrationPage(doc: PDFDocument, font: PDFFont): void {
-  const PAGE_W_MM = 210;
-  const PAGE_H_MM = 297;
-  const REF_MM = 100;
-  const HEADER_H_MM = 36;
-  const page = doc.addPage([mm(PAGE_W_MM), mm(PAGE_H_MM)]);
-
-  // Square centered horizontally, and centered in the space below the header.
-  const x0_mm = (PAGE_W_MM - REF_MM) / 2;
-  const y0_mm = (PAGE_H_MM - HEADER_H_MM - REF_MM) / 2;
-  const sx = mm(x0_mm);
-  const sy = mm(y0_mm);
-  const side = mm(REF_MM);
-
-  page.drawRectangle({
-    x: sx,
-    y: sy,
-    width: side,
-    height: side,
-    borderColor: rgb(0, 0, 0),
-    borderWidth: 0.6,
-  });
-
-  // Tick rulers on the left and bottom edges. Major (10 mm) ticks carry a
-  // numeric label so the calibration page doubles as a ruler the user can
-  // hold next to a printed tag.
-  drawRuler(page, font, "bottom", x0_mm, y0_mm, REF_MM);
-  drawRuler(page, font, "left", x0_mm, y0_mm, REF_MM);
-
-  // Header.
-  page.drawText("Print calibration", {
-    x: mm(20),
-    y: mm(PAGE_H_MM - 14),
-    font,
-    size: 18,
-  });
-  const headerLines = [
-    "The square below is exactly 100 mm × 100 mm. Tick marks at 1 mm; numbered every 10 mm.",
-    "If the printed square is the wrong size, disable 'Fit to page' / 'Scale' in your printer",
-    "dialog and reprint. You can also use this page as a ruler to verify your printed tags.",
-  ];
-  for (let i = 0; i < headerLines.length; i++) {
-    page.drawText(headerLines[i]!, {
-      x: mm(20),
-      y: mm(PAGE_H_MM - 22 - i * 4),
-      font,
-      size: 9,
-      color: rgb(0.25, 0.25, 0.25),
-    });
-  }
-}
-
-function drawRuler(
-  page: PDFPage,
-  font: PDFFont,
-  side: "left" | "bottom",
-  x0_mm: number,
-  y0_mm: number,
-  span_mm: number,
-): void {
-  const labelSize = 8;
-  for (let i = 0; i <= span_mm; i++) {
-    const isMajor = i % 10 === 0;
-    const isMid = !isMajor && i % 5 === 0;
-    const lengthMm = isMajor ? 4 : isMid ? 2 : 1;
-    const thickness = isMajor ? 0.5 : isMid ? 0.35 : 0.25;
-
-    if (side === "bottom") {
-      const tx = mm(x0_mm + i);
-      const ty = mm(y0_mm);
-      page.drawLine({
-        start: { x: tx, y: ty },
-        end: { x: tx, y: ty - mm(lengthMm) },
-        thickness,
-        color: rgb(0, 0, 0),
-      });
-      if (isMajor) {
-        const label = String(i);
-        const w = font.widthOfTextAtSize(label, labelSize);
-        page.drawText(label, {
-          x: tx - w / 2,
-          y: ty - mm(lengthMm) - labelSize - 1,
-          font,
-          size: labelSize,
-          color: rgb(0, 0, 0),
-        });
-      }
-    } else {
-      // left
-      const tx = mm(x0_mm);
-      const ty = mm(y0_mm + i);
-      page.drawLine({
-        start: { x: tx, y: ty },
-        end: { x: tx - mm(lengthMm), y: ty },
-        thickness,
-        color: rgb(0, 0, 0),
-      });
-      if (isMajor) {
-        const label = String(i);
-        const w = font.widthOfTextAtSize(label, labelSize);
-        // Vertically centre the digits on the tick (Courier digits sit on
-        // the baseline; nudging by ~28 % of font size centres their
-        // visual mass).
-        page.drawText(label, {
-          x: tx - mm(lengthMm) - w - 2,
-          y: ty - labelSize * 0.28,
-          font,
-          size: labelSize,
-          color: rgb(0, 0, 0),
-        });
-      }
-    }
-  }
-}
-
-// -------------------- layout page (front) --------------------
-
-function drawTagPage(
-  doc: PDFDocument,
-  font: PDFFont,
-  plan: LayoutPlan,
-  pageIndex: number,
-  bits: BitsProvider,
-  labelInQuietZone: boolean,
-): void {
-  const page = doc.addPage([mm(plan.paper.width_mm), mm(plan.paper.height_mm)]);
-
-  for (const c of plan.cutSegments) {
-    if (c.page !== pageIndex) continue;
-    page.drawLine({
-      start: { x: mm(c.x0_mm), y: mm(c.y0_mm) },
-      end: { x: mm(c.x1_mm), y: mm(c.y1_mm) },
-      color: rgb(0.55, 0.55, 0.55),
-      thickness: 0.25,
-    });
-  }
-  for (const c of plan.cutCircles) {
-    if (c.page !== pageIndex) continue;
-    page.drawCircle({
-      x: mm(c.cx_mm),
-      y: mm(c.cy_mm),
-      size: mm(c.radius_mm),
-      borderColor: rgb(0.55, 0.55, 0.55),
-      borderWidth: 0.25,
-    });
-  }
-
-  drawRegistrationCorners(page, plan);
-
-  for (const placement of plan.placements) {
-    if (placement.page !== pageIndex) continue;
-    drawTag(page, placement, plan, bits);
-    if (labelInQuietZone) drawQuietZoneLabel(page, font, placement, plan);
-  }
-
-  drawPageFooter(page, font, plan, pageIndex, false);
-}
-
-/**
- * Set the tag's caption inside its bottom quiet-zone band on the front, so it
- * survives on the cut-out tag. For square tags the text occupies the lower part
- * of the rectangular band; for circular tags the text curves along the inside
- * of the quiet-zone ring.
- */
-function drawQuietZoneLabel(
-  page: PDFPage,
-  font: PDFFont,
-  placement: Placement,
-  plan: LayoutPlan,
-): void {
-  const Q_mm = plan.options.quietZone_mm;
-  if (Q_mm <= 0) return;
-  const isCircular = plan.cutCircles.length > 0;
-  if (isCircular) {
-    drawCircularQuietZoneLabel(page, font, placement, plan);
-    return;
-  }
-  const tile_mm = plan.tileSize_mm;
-  const mainText = tagCaptionLine(placement.tag.family, placement.tag.id, plan.tagSize_mm);
-  const subText = subtagChainLabel(placement.tag.subtag, plan.subtagLevels);
-
-  if (subText) {
-    // Two lines: main caption and sub-tag chain, each gets half the band.
-    const halfQ = Q_mm * 0.3;
-    for (const [text, baselineFrac] of [[mainText, 0.52], [subText, 0.12]] as const) {
-      const widthLimited = tile_mm / (0.6 * text.length);
-      const fontPt = Math.max(0.5, mm(Math.min(halfQ, widthLimited)));
-      const w = font.widthOfTextAtSize(text, fontPt);
-      const x = mm(placement.x_mm + tile_mm / 2) - w / 2;
-      const y = mm(placement.y_mm - Q_mm + Q_mm * baselineFrac);
-      page.drawText(text, { x, y, font, size: fontPt, color: rgb(0, 0, 0) });
-    }
-  } else {
-    const natural_mm = Q_mm * 0.6;
-    const widthLimited_mm = tile_mm / (0.6 * mainText.length);
-    const fontPt = Math.max(0.5, mm(Math.min(natural_mm, widthLimited_mm)));
-    const w = font.widthOfTextAtSize(mainText, fontPt);
-    const x = mm(placement.x_mm + tile_mm / 2) - w / 2;
-    const y = mm(placement.y_mm - Q_mm + Q_mm * 0.28);
-    page.drawText(mainText, { x, y, font, size: fontPt, color: rgb(0, 0, 0) });
-  }
-}
-
-/** Draw a string centred along the bottom arc of a circle, one character at a
- *  time so each glyph is tangent to the curve. `radius_mm` is the baseline
- *  radius; `centerAngle_deg` is the arc midpoint (90 = bottom in SVG-y-down
- *  convention). `maxArc_deg` caps the angular span. */
-function drawCurvedText(
-  page: PDFPage,
-  font: PDFFont,
-  text: string,
-  cx_mm: number,
-  cy_mm: number,
-  radius_mm: number,
-  fontPt: number,
-  maxArc_deg: number,
-): void {
-  if (text.length === 0) return;
-  const charWidth_mm = (fontPt / MM_TO_PT) * 0.6;
-  const totalArc_mm = text.length * charWidth_mm;
-  const totalArc_rad = Math.min(totalArc_mm / radius_mm, (maxArc_deg * Math.PI) / 180);
-  const halfArc_rad = totalArc_rad / 2;
-
-  // Characters are placed left-to-right, starting from the left side of the arc.
-  // In PDF coords (y-up), "bottom" is angle −90° (or 3π/2). Text reads
-  // left-to-right so it runs from (−90° − halfArc) to (−90° + halfArc).
-  const startAngle_rad = -Math.PI / 2 - halfArc_rad;
-  const angleStep_rad = text.length > 1 ? totalArc_rad / (text.length - 1) : 0;
-
-  for (let i = 0; i < text.length; i++) {
-    const theta = startAngle_rad + i * angleStep_rad;
-    const px = cx_mm + radius_mm * Math.cos(theta);
-    const py = cy_mm + radius_mm * Math.sin(theta);
-    // Tangent direction for left-to-right reading along the bottom arc:
-    // derivative of (cos θ, sin θ) is (−sin θ, cos θ), which points CCW.
-    const rot_deg = (theta + Math.PI / 2) * (180 / Math.PI);
-    const w = font.widthOfTextAtSize(text[i]!, fontPt);
-    page.drawText(text[i]!, {
-      x: mm(px) - w / 2,
-      y: mm(py) - fontPt * 0.25,
-      font,
-      size: fontPt,
-      rotate: degrees(rot_deg),
-      color: rgb(0, 0, 0),
-    });
-  }
-}
-
-function drawCircularQuietZoneLabel(
-  page: PDFPage,
-  font: PDFFont,
-  placement: Placement,
-  plan: LayoutPlan,
-): void {
-  const Q_mm = plan.options.quietZone_mm;
-  const tile_mm = plan.tileSize_mm;
-  const cutRadius_mm = plan.cutCircles[0]?.radius_mm ?? tile_mm / 2 + Q_mm;
-  const cx_mm = placement.x_mm + tile_mm / 2;
-  const cy_mm = placement.y_mm + tile_mm / 2;
-
-  const mainText = tagCaptionLine(placement.tag.family, placement.tag.id, plan.tagSize_mm);
-  const subText = subtagChainLabel(placement.tag.subtag, plan.subtagLevels);
-
-  // Limit font height to the quiet-zone ring thickness and arc span to ~120°.
-  const maxArc_deg = 120;
-
-  if (subText) {
-    // Two lines: main at outer radius, sub at inner radius.
-    const textRadiusOuter = cutRadius_mm - Q_mm * 0.3;
-    const textRadiusInner = cutRadius_mm - Q_mm * 0.8;
-    const maxFontH_mm = Q_mm * 0.35;
-    for (const [text, radius] of [[mainText, textRadiusOuter], [subText, textRadiusInner]] as const) {
-      const maxFontArc_mm = (radius * maxArc_deg * Math.PI) / 180 / (text.length * 0.6);
-      const fontPt = Math.max(1, mm(Math.min(maxFontH_mm, maxFontArc_mm)));
-      drawCurvedText(page, font, text, cx_mm, cy_mm, radius, fontPt, maxArc_deg);
-    }
-  } else {
-    const textRadius = cutRadius_mm - Q_mm * 0.5;
-    const maxFontH_mm = Q_mm * 0.7;
-    const maxFontArc_mm = (textRadius * maxArc_deg * Math.PI) / 180 / (mainText.length * 0.6);
-    const fontPt = Math.max(1, mm(Math.min(maxFontH_mm, maxFontArc_mm)));
-    drawCurvedText(page, font, mainText, cx_mm, cy_mm, textRadius, fontPt, maxArc_deg);
-  }
-}
-
-function subtagChainLabel(subtag: TagSpec | undefined, levels: SubtagLevel[]): string {
-  if (!subtag) return "";
-  const parts: string[] = [];
-  let s: TagSpec | undefined = subtag;
-  let i = 0;
-  while (s) {
-    const lvl = levels[i];
-    const size = lvl ? ` · ${formatTagSize(lvl.tagSize_mm)}` : "";
-    parts.push(`> ${s.family} #${s.id}${size}`);
-    s = s.subtag;
-    i++;
-  }
-  return parts.join("  ");
-}
-
-function drawRegistrationCorners(page: PDFPage, plan: LayoutPlan): void {
-  const margin = plan.options.pageMargin_mm;
-  if (margin <= 0) return;
-  const W = plan.paper.width_mm;
-  const H = plan.paper.height_mm;
-  for (const [cx, cy] of [
-    [margin, margin],
-    [W - margin, margin],
-    [margin, H - margin],
-    [W - margin, H - margin],
-  ] as Array<[number, number]>) {
-    drawRegistrationMark(page, cx, cy);
-  }
-}
-
-function drawRegistrationMark(page: PDFPage, x_mm: number, y_mm: number): void {
-  const armPt = mm(2);
-  const x = mm(x_mm);
-  const y = mm(y_mm);
-  page.drawLine({
-    start: { x: x - armPt, y },
-    end: { x: x + armPt, y },
-    thickness: 0.4,
-    color: rgb(0.4, 0.4, 0.4),
-  });
-  page.drawLine({
-    start: { x, y: y - armPt },
-    end: { x, y: y + armPt },
-    thickness: 0.4,
-    color: rgb(0.4, 0.4, 0.4),
-  });
-}
-
-function drawTag(
-  page: PDFPage,
-  placement: Placement,
-  plan: LayoutPlan,
-  bits: BitsProvider,
-): void {
-  drawTagBits(page, placement.tag, placement.x_mm, placement.y_mm, plan.tileSize_mm, bits);
-}
-
-function drawTagBits(
-  page: PDFPage,
-  tag: TagSpec,
-  x_mm: number,
-  y_mm: number,
-  tileSize_mm: number,
-  bits: BitsProvider,
-): void {
-  const grid = bits.bits(tag.family, tag.id);
-  if (grid === null) {
-    page.drawRectangle({
-      x: mm(x_mm),
-      y: mm(y_mm),
-      width: mm(tileSize_mm),
-      height: mm(tileSize_mm),
-      borderColor: rgb(0.5, 0.5, 0.5),
-      borderWidth: 0.4,
-    });
-    return;
-  }
-
-  const edge = grid.length;
-  if (edge === 0) return;
-  const cell_mm = tileSize_mm / edge;
-  const cell_pt = mm(cell_mm);
-  const overlap_pt = 0.05;
-
-  const familyDef = getFamily(tag.family);
-  const cb = tag.subtag && familyDef?.centerBlock;
-
-  for (let row = 0; row < edge; row++) {
-    const r = grid[row]!;
-    for (let col = 0; col < edge; col++) {
-      if (!r[col]) continue;
-      if (cb && row >= cb.row && row < cb.row + cb.size &&
-          col >= cb.col && col < cb.col + cb.size) continue;
-      const x_mm_local = x_mm + col * cell_mm;
-      const y_mm_local = y_mm + (edge - 1 - row) * cell_mm;
-      page.drawRectangle({
-        x: mm(x_mm_local),
-        y: mm(y_mm_local),
-        width: cell_pt + overlap_pt,
-        height: cell_pt + overlap_pt,
-        color: rgb(0, 0, 0),
-      });
-    }
-  }
-
-  if (cb && tag.subtag) {
-    const module_mm = tileSize_mm / edge;
-    const subTile_mm = cb.size * module_mm;
-    const subX_mm = x_mm + cb.col * module_mm;
-    const subY_mm = y_mm + (edge - cb.row - cb.size) * module_mm;
-    drawTagBits(page, tag.subtag, subX_mm, subY_mm, subTile_mm, bits);
-  }
-}
-
-// -------------------- back page (mirrored labels) --------------------
-
-function drawBackPage(
-  doc: PDFDocument,
-  font: PDFFont,
-  fontBold: PDFFont,
-  plan: LayoutPlan,
-  pageIndex: number,
-): void {
-  const W_mm = plan.paper.width_mm;
-  const page = doc.addPage([mm(W_mm), mm(plan.paper.height_mm)]);
-
-  // Cut lines mirrored along the vertical axis: x' = W − x. y is unchanged.
-  for (const c of plan.cutSegments) {
-    if (c.page !== pageIndex) continue;
-    page.drawLine({
-      start: { x: mm(W_mm - c.x0_mm), y: mm(c.y0_mm) },
-      end: { x: mm(W_mm - c.x1_mm), y: mm(c.y1_mm) },
-      color: rgb(0.55, 0.55, 0.55),
-      thickness: 0.25,
-    });
-  }
-  for (const c of plan.cutCircles) {
-    if (c.page !== pageIndex) continue;
-    page.drawCircle({
-      x: mm(W_mm - c.cx_mm),
-      y: mm(c.cy_mm),
-      size: mm(c.radius_mm),
-      borderColor: rgb(0.55, 0.55, 0.55),
-      borderWidth: 0.25,
-    });
-  }
-  // Registration marks: corner positions are symmetric in x (margin /
-  // W−margin), so the same set of points is correct on the back.
-  drawRegistrationCorners(page, plan);
-
-  // For every front placement, draw a back-side label at its mirrored
-  // position. The tag bounds on the back are:
-  //   x_back = W − x_front − tileSize     (tile-size wide)
-  //   y_back = y_front                     (unchanged)
-  const tile_mm = plan.tileSize_mm;
-  const tagSpec_mm = plan.tagSize_mm;
-  for (const placement of plan.placements) {
-    if (placement.page !== pageIndex) continue;
-    const x_back_mm = W_mm - placement.x_mm - tile_mm;
-    const y_back_mm = placement.y_mm;
-    drawBackLabel(page, font, fontBold, placement, x_back_mm, y_back_mm, tile_mm, tagSpec_mm, plan.subtagLevels, plan.cutCircles.length > 0);
-  }
-
-  drawPageFooter(page, font, plan, pageIndex, true);
-}
-
-function drawBackLabel(
-  page: PDFPage,
-  font: PDFFont,
-  fontBold: PDFFont,
-  placement: Placement,
-  x_mm: number,
-  y_mm: number,
-  tile_mm: number,
-  tagSpec_mm: number,
-  subtagLevels: SubtagLevel[],
-  isCircular: boolean,
-): void {
-  // Faint border so the user can see the bounds of each tag on the back side
-  // (no bitmap to give it shape). Circular tags get a matching circle.
-  if (isCircular) {
-    const radius = tile_mm / 2;
-    page.drawCircle({
-      x: mm(x_mm + radius),
-      y: mm(y_mm + radius),
-      size: mm(radius),
-      borderColor: rgb(0.75, 0.75, 0.75),
-      borderWidth: 0.2,
-    });
-  } else {
-    page.drawRectangle({
-      x: mm(x_mm),
-      y: mm(y_mm),
-      width: mm(tile_mm),
-      height: mm(tile_mm),
-      borderColor: rgb(0.75, 0.75, 0.75),
-      borderWidth: 0.2,
-    });
-  }
-
-  const lines: Array<{ text: string; bold: boolean }> = [
-    { text: placement.tag.family, bold: false },
-    { text: `#${placement.tag.id}`, bold: true },
-    { text: formatTagSize(tagSpec_mm), bold: false },
-  ];
-  let sub = placement.tag.subtag;
-  let levelIdx = 0;
-  while (sub) {
-    const lvl = subtagLevels[levelIdx];
-    const size = lvl ? formatTagSize(lvl.tagSize_mm) : "";
-    lines.push({ text: `> ${sub.family} #${sub.id}${size ? ` · ${size}` : ""}`, bold: false });
-    sub = sub.subtag;
-    levelIdx++;
-  }
-
-  // Scale font so the block fits vertically and no line overflows horizontally.
-  const maxGlyphs = Math.max(1, ...lines.map((l) => l.text.length));
-  let fontPt = mm(tile_mm) * Math.min(0.18, 0.85 / (1.4 * lines.length), 0.9 / (0.6 * maxGlyphs));
-  fontPt = Math.max(fontPt, mm(1.5));
-  const lineHeight = fontPt * 1.4;
-  const blockHeight = lineHeight * lines.length;
-  const tagCenterY = mm(y_mm + tile_mm / 2);
-  const tagCenterX = mm(x_mm + tile_mm / 2);
-  // Baseline of the topmost line.
-  const topBaseline = tagCenterY + blockHeight / 2 - fontPt;
-
-  for (let i = 0; i < lines.length; i++) {
-    const ln = lines[i]!;
-    const f = ln.bold ? fontBold : font;
-    const w = f.widthOfTextAtSize(ln.text, fontPt);
-    page.drawText(ln.text, {
-      x: tagCenterX - w / 2,
-      y: topBaseline - i * lineHeight,
-      font: f,
-      size: fontPt,
-      color: rgb(0, 0, 0),
-    });
-  }
-}
-
-// -------------------- footer --------------------
-
-function drawPageFooter(
-  page: PDFPage,
-  font: PDFFont,
-  plan: LayoutPlan,
-  pageIndex: number,
-  isBack: boolean,
-): void {
-  const pagePlacements = plan.placements.filter((p) => p.page === pageIndex);
-  if (pagePlacements.length === 0) return;
-  const families = [...new Set(pagePlacements.map((p) => p.tag.family))];
-  const ids = pagePlacements.map((p) => p.tag.id).slice().sort((a, b) => a - b);
-  const contiguous =
-    ids.length > 0 &&
-    ids.every((id, i) => i === 0 || id === ids[i - 1]! + 1);
-  const idLabel =
-    pagePlacements.length === 1
-      ? `#${pagePlacements[0]!.tag.id}`
-      : contiguous
-        ? `#${ids[0]}..${ids[ids.length - 1]}`
-        : `${pagePlacements.length} tags`;
-  const Q = plan.options.quietZone_mm;
-  const cell = plan.tileSize_mm + 2 * Q;
-  const parts = [
-    `Page ${pageIndex + 1}/${plan.pageCount}${isBack ? " (back)" : ""}`,
-    `${families.join(",")} ${idLabel}`,
-    `tag ${plan.tagSize_mm} mm, cell ${cell.toFixed(2)} mm`,
-  ];
-  const subLine = subtagSizeLine(plan.subtagLevels);
-  if (subLine) parts.push(subLine);
-  page.drawText(parts.join("   "), {
-    x: mm(5),
-    y: mm(3),
-    font,
-    size: 7,
-    color: rgb(0.35, 0.35, 0.35),
-  });
 }
