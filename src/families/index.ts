@@ -112,7 +112,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     // Smallest circle centered on the tile that encloses every *occupied*
     // cell (7×7 inner block corners). Corner cells of the 9×9 tile are
     // outside the circular tag shape.
-    outerRadius_modules: 4.949747,
+    outerRadius_modules: 4.949747468305833,
     validTagCount: 38,
     group: "Circle",
     shape: "circle",
@@ -122,7 +122,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle49h12_mosaic.png`,
     tileSize_px: 11,
     widthAtBorder_modules: 5,
-    outerRadius_modules: 6.363961,
+    outerRadius_modules: 5.70087712549569,
     validTagCount: 65535,
     group: "Circle",
     shape: "circle",
@@ -190,28 +190,21 @@ export function outerRadiusModulesFor(bits: ReadonlyArray<ReadonlyArray<boolean>
 }
 
 /**
- * Boolean mask of which cells in a circular tag's tile are occupied (inside
- * the tag shape) vs unoccupied (outside, should render white). The pattern:
- * a centered `(edge-2)×(edge-2)` inner block with 3-cell-wide cross arms on
- * each side. The four corner L-shapes are unoccupied.
+ * Occupied-cell mask for a circle family: a cell is inside the tag if the
+ * outer corner of the cell lies within `outerRadius_modules` of the tile
+ * center. This naturally produces the correct shape for any radius — no
+ * per-family branching, no hardcoded arm widths. For square families the
+ * mask is simply all-true.
  */
-export function circleOccupiedMask(edge: number): boolean[][] {
-  const innerSize = edge - 2;
-  const armWidth = 3;
-  const margin = (edge - innerSize) / 2; // always 1
-  const armStart = Math.floor((edge - armWidth) / 2);
+export function circleOccupiedMask(edge: number, outerRadius_modules: number): boolean[][] {
+  const center = (edge - 1) / 2;
   const mask: boolean[][] = [];
   for (let r = 0; r < edge; r++) {
     const row: boolean[] = [];
     for (let c = 0; c < edge; c++) {
-      const inInner =
-        r >= margin && r < margin + innerSize &&
-        c >= margin && c < margin + innerSize;
-      const inTopArm    = r === 0 && c >= armStart && c < armStart + armWidth;
-      const inBottomArm = r === edge - 1 && c >= armStart && c < armStart + armWidth;
-      const inLeftArm   = c === 0 && r >= armStart && r < armStart + armWidth;
-      const inRightArm  = c === edge - 1 && r >= armStart && r < armStart + armWidth;
-      row.push(inInner || inTopArm || inBottomArm || inLeftArm || inRightArm);
+      const dx = Math.abs(c - center) + 0.5;
+      const dy = Math.abs(r - center) + 0.5;
+      row.push(Math.sqrt(dx * dx + dy * dy) <= outerRadius_modules + 1e-9);
     }
     mask.push(row);
   }
@@ -227,7 +220,7 @@ export function applyOccupiedMask(
   family: TagFamilyDef,
 ): boolean[][] {
   if (family.shape !== "circle") return bits.map((row) => [...row]);
-  const mask = circleOccupiedMask(family.tileSize_px);
+  const mask = circleOccupiedMask(family.tileSize_px, family.outerRadius_modules!);
   return bits.map((row, r) => row.map((val, c) => val && (mask[r]?.[c] ?? false)));
 }
 

@@ -124,25 +124,25 @@ describe("extractTagBits", () => {
 });
 
 describe("circleOccupiedMask", () => {
-  it("generates a 9x9 mask with inner 7x7 block and 3-wide cross arms", () => {
-    const mask = circleOccupiedMask(9);
+  it("generates a 9x9 mask from radius=4.949747 (tagCircle21h7)", () => {
+    const mask = circleOccupiedMask(9, 4.949747468305833);
     expect(mask).toHaveLength(9);
     mask.forEach((row) => expect(row).toHaveLength(9));
 
-    // Corner L-shapes are unoccupied.
+    // Corner L-shapes (5 cells) are outside the radius.
     expect(mask[0]![0]).toBe(false);
     expect(mask[0]![1]).toBe(false);
     expect(mask[0]![2]).toBe(false);
     expect(mask[1]![0]).toBe(false);
     expect(mask[2]![0]).toBe(false);
 
-    // Top arm (row 0, cols 3-5) and bottom arm are occupied.
+    // Top arm (row 0, cols 3-5) at distance ≤ 4.743 modules — inside radius.
     expect(mask[0]![3]).toBe(true);
     expect(mask[0]![4]).toBe(true);
     expect(mask[0]![5]).toBe(true);
     expect(mask[8]![3]).toBe(true);
 
-    // Inner 7x7 (rows 1-7, cols 1-7) occupied.
+    // 7x7 inner corner at distance 4.950 — inside radius.
     expect(mask[1]![1]).toBe(true);
     expect(mask[4]![4]).toBe(true);
     expect(mask[7]![7]).toBe(true);
@@ -153,24 +153,26 @@ describe("circleOccupiedMask", () => {
     expect(mask[5]![0]).toBe(true);
   });
 
-  it("generates an 11x11 mask with inner 9x9 block and 3-wide cross arms", () => {
-    const mask = circleOccupiedMask(11);
+  it("generates an 11x11 mask from radius=5.700877 (tagCircle49h12)", () => {
+    const mask = circleOccupiedMask(11, 5.70087712549569);
     expect(mask).toHaveLength(11);
 
-    // Corner L-shapes unoccupied.
+    // Corner L-shapes are outside the radius.
     expect(mask[0]![0]).toBe(false);
-    expect(mask[0]![3]).toBe(false);
+    expect(mask[0]![3]).toBe(false); // distance 6.041 > 5.701
+    expect(mask[1]![1]).toBe(false); // distance 6.364 > 5.701 — key fix vs old mask
     expect(mask[3]![0]).toBe(false);
 
-    // Top arm (row 0, cols 4-6) occupied.
+    // Second-ext top arm (row 0, cols 4-6) at distance ≤ 5.701 — inside radius.
     expect(mask[0]![4]).toBe(true);
     expect(mask[0]![5]).toBe(true);
     expect(mask[0]![6]).toBe(true);
 
-    // Inner 9x9 (rows 1-9, cols 1-9) occupied.
-    expect(mask[1]![1]).toBe(true);
+    // First-ext corner at (1,2) distance 5.701 — inside radius.
+    expect(mask[1]![2]).toBe(true);
+    // Core 7x7 at (2,2) distance 4.950 — inside radius.
+    expect(mask[2]![2]).toBe(true);
     expect(mask[5]![5]).toBe(true);
-    expect(mask[9]![9]).toBe(true);
   });
 });
 
@@ -183,23 +185,20 @@ describe("applyOccupiedMask", () => {
     };
     const result = applyOccupiedMask(bits, family);
     expect(result).toEqual(bits);
-    // Must be a different array instance.
     expect(result).not.toBe(bits);
   });
 
   it("zeros out unoccupied corner cells for circle families", () => {
-    // All-true 9x9 grid: every cell starts black.
     const allTrue = Array.from({ length: 9 }, () => Array(9).fill(true) as boolean[]);
     const family: TagFamilyDef = {
       name: "tagCircle21h7", mosaicPath: "", tileSize_px: 9,
-      widthAtBorder_modules: 5, validTagCount: 38, shape: "circle",
+      widthAtBorder_modules: 5, outerRadius_modules: 4.949747468305833,
+      validTagCount: 38, shape: "circle",
     };
     const result = applyOccupiedMask(allTrue, family);
-    // Corner cells should become false.
     expect(result[0]![0]).toBe(false);
     expect(result[0]![2]).toBe(false);
     expect(result[2]![0]).toBe(false);
-    // Occupied cells remain true.
     expect(result[0]![4]).toBe(true);
     expect(result[4]![4]).toBe(true);
   });
