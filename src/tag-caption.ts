@@ -19,9 +19,9 @@ export function formatTagSize(size_mm: number): string {
 
 /** Format the sub-tag nesting chain for display.
  *  Single:  "sub: tag36h11 10.67 mm"
- *  Multi:   "sub: tagCustom48h12 10.67 mm → tag36h11 2.13 mm" */
+ *  Multi:   "sub: tagCustom48h12 10.67 mm > tag36h11 2.13 mm" */
 export function subtagSizeLine(levels: SubtagLevel[]): string {
   if (levels.length === 0) return "";
   const parts = levels.map((l) => `${l.familyName} ${formatTagSize(l.tagSize_mm)}`);
-  return `sub: ${parts.join(" → ")}`;
+  return `sub: ${parts.join(" > ")}`;
 }

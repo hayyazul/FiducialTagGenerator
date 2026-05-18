@@ -40,6 +40,6 @@ describe("subtagSizeLine", () => {
     expect(subtagSizeLine([
       { familyName: "tagCustom48h12", tileSize_mm: 13.33, tagSize_mm: 8 },
       { familyName: "tag36h11", tileSize_mm: 2.67, tagSize_mm: 2.13 },
-    ])).toBe("sub: tagCustom48h12 8 mm → tag36h11 2.13 mm");
+    ])).toBe("sub: tagCustom48h12 8 mm > tag36h11 2.13 mm");
   });
 });

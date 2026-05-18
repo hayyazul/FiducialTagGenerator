@@ -34,12 +34,31 @@ function buildFamilyOptionsMarkup(): string {
   return out;
 }
 function buildSquareFamilyOptionsMarkup(): string {
-  return listSquareFamilyNames()
-    .map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`)
-    .join("");
+  const names = listSquareFamilyNames();
+  const items = names
+    .map((n) => getFamily(n))
+    .filter((f): f is TagFamilyDef => f !== undefined);
+  let out = "";
+  let currentGroup: string | undefined;
+  let groupOpen = false;
+  for (const f of items) {
+    if (f.group !== currentGroup) {
+      if (groupOpen) out += `</optgroup>`;
+      currentGroup = f.group;
+      if (f.group !== undefined) {
+        out += `<optgroup label="${escapeHtml(f.group)}">`;
+        groupOpen = true;
+      } else {
+        groupOpen = false;
+      }
+    }
+    out += `<option value="${escapeHtml(f.name)}">${escapeHtml(f.name)}</option>`;
+  }
+  if (groupOpen) out += `</optgroup>`;
+  return out;
 }
 
-const MAX_SUBTAG_DEPTH = 5;
+const MAX_SUBTAG_DEPTH = 2;
 
 import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { parseTagIdSpec } from "./ids";
