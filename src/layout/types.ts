@@ -37,11 +37,18 @@ export interface Paper {
  *    a tag's right cut and its right-neighbour's left cut is exactly this
  *    value. Cuts hug each tag's quiet zone — the margin no longer adds
  *    slack outside the cut line.
+ *  - packingStrategy: how tags are arranged on the page. `"grid"` packs
+ *    on a square lattice and is the only meaningful strategy for square
+ *    cut shapes. `"hex"` packs circles on a hexagonal lattice (~15% more
+ *    tags per page) and is only valid for circle cut shapes; passing it
+ *    with a square cut shape is rejected. When omitted, the planner
+ *    defaults to `"hex"` for circles and `"grid"` for squares.
  */
 export interface LayoutOptions {
   pageMargin_mm: number;
   quietZone_mm: number;
   cutMargin_mm: number;
+  packingStrategy?: "grid" | "hex";
 }
 
 /**

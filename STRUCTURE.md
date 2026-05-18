@@ -32,9 +32,9 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 | `src/families/index.test.ts` | Unit tests for family registry functions: mosaic grid math, bit extraction, circle masks, occupied-mask application, and outer-radius measurement. |
 | `src/ids.ts` | Pure parser for tag-ID range specifications (e.g. "0-9, 12, 15-20"), producing an ordered array of integer IDs with validation. |
 | `src/ids.test.ts` | Unit tests for `parseTagIdSpec`: single IDs, ranges, mixed input, whitespace, backwards ranges, duplicates, malformed tokens, and oversized ranges. |
-| `src/layout/types.ts` | Domain types for the layout engine: `TagSpec`, `Paper`, `LayoutOptions`, `Placement`, `CutSegment`, `CutCircle`, and `LayoutPlan` — all in millimetres with bottom-left origin. |
-| `src/layout/plan.ts` | Layout planner: packs tags into a grid across pages given paper size, margins, and cut shape; computes placements, cut geometry, and page count. |
-| `src/layout/plan.test.ts` | Unit tests for the layout planner: grid capacity, cut-segment generation, circle-plan geometry, and `maxTagSizeForCount` bounds. |
+| `src/layout/types.ts` | Domain types for the layout engine: `TagSpec`, `Paper`, `LayoutOptions` (including the `packingStrategy` choice), `Placement`, `CutSegment`, `CutCircle`, and `LayoutPlan` — all in millimetres with bottom-left origin. |
+| `src/layout/plan.ts` | Layout planner: packs tags onto pages under the selected strategy (`grid` for squares, hexagonal close-packing for circles by default); computes placements, cut geometry, and page count. |
+| `src/layout/plan.test.ts` | Unit tests for the layout planner: grid and hex capacity, cut-segment generation, circle-plan geometry, hex-lattice invariants, and `maxTagSizeForCount` bounds under each strategy. |
 | `src/preview/svg.ts` | SVG preview renderer: converts one page of a `LayoutPlan` to an SVG string with tag images, cut lines/circles, registration marks, curved or linear captions, and sub-tag overlays. |
 | `src/preview/svg.test.ts` | Unit tests for SVG rendering: placeholder fallback, image rendering, XML escaping, colour/style invariants, registration marks, circle output, sub-tag overlays, and curved quiet-zone text. |
 | `src/preview/tag-images.ts` | Tag bitmap rasteriser: converts bit grids into 1-pixel-per-bit PNG data URIs via an offscreen canvas, caching results for the preview. |

@@ -58,6 +58,87 @@ function tagsPerAxis(
   return Math.floor((printable_mm + options.cutMargin_mm) / pitch);
 }
 
+/** Resolve the effective packing strategy for the given cut shape, applying
+ *  defaults and rejecting invalid combinations. */
+function resolvePackingStrategy(
+  options: LayoutOptions,
+  cutShape: CutShape,
+): "grid" | "hex" {
+  const explicit = options.packingStrategy;
+  if (explicit === "hex") {
+    require_(
+      cutShape.kind === "circle",
+      `packingStrategy "hex" is only valid for circle cut shapes (got "${cutShape.kind}")`,
+    );
+    return "hex";
+  }
+  if (explicit === "grid") return "grid";
+  return cutShape.kind === "circle" ? "hex" : "grid";
+}
+
+/** Geometry of a hexagonal close-packing of circles of radius R into a
+ *  rectangle. Even rows (r % 2 === 0) start at x = R; odd rows are offset
+ *  inward by pitchX/2. Vertical pitch is pitchX · √3/2 so adjacent circles
+ *  in neighbouring rows touch with the same gap as same-row neighbours. */
+interface HexParams {
+  R: number;
+  pitchX: number;
+  pitchY: number;
+  colsEven: number;
+  colsOdd: number;
+  numRows: number;
+  perPage: number;
+}
+
+function hexLatticeParams(
+  paper: Paper,
+  options: LayoutOptions,
+  cutShape: CutShape & { kind: "circle" },
+): HexParams {
+  const R = cutShape.outerRadius_mm + options.quietZone_mm;
+  const g = options.cutMargin_mm;
+  const pitchX = 2 * R + g;
+  const pitchY = pitchX * Math.sqrt(3) / 2;
+  const printable_x = paper.width_mm - 2 * options.pageMargin_mm;
+  const printable_y = paper.height_mm - 2 * options.pageMargin_mm;
+  // Centers along an even row fit when (cols-1)·pitchX + 2R ≤ printable_x.
+  const colsEven = printable_x + 1e-9 >= 2 * R
+    ? Math.floor((printable_x - 2 * R) / pitchX + 1e-9) + 1
+    : 0;
+  // Odd rows start half a pitch further right, costing space for one column.
+  const colsOdd = printable_x + 1e-9 >= 2 * R + pitchX / 2
+    ? Math.floor((printable_x - 2 * R - pitchX / 2) / pitchX + 1e-9) + 1
+    : 0;
+  const numRows = printable_y + 1e-9 >= 2 * R
+    ? Math.floor((printable_y - 2 * R) / pitchY + 1e-9) + 1
+    : 0;
+  // Sum cols across alternating rows.
+  let perPage = 0;
+  for (let r = 0; r < numRows; r++) {
+    perPage += r % 2 === 0 ? colsEven : colsOdd;
+  }
+  return { R, pitchX, pitchY, colsEven, colsOdd, numRows, perPage };
+}
+
+/** Per-page tag capacity under the given strategy. */
+function pageCapacity(
+  paper: Paper,
+  tileSize_mm: number,
+  options: LayoutOptions,
+  cutShape: CutShape,
+  strategy: "grid" | "hex",
+): number {
+  if (strategy === "grid") {
+    const printable_x = paper.width_mm - 2 * options.pageMargin_mm;
+    const printable_y = paper.height_mm - 2 * options.pageMargin_mm;
+    const cols = tagsPerAxis(printable_x, tileSize_mm, options, cutShape);
+    const rows = tagsPerAxis(printable_y, tileSize_mm, options, cutShape);
+    return cols * rows;
+  }
+  // hex (only ever called with circle cut by resolvePackingStrategy)
+  return hexLatticeParams(paper, options, cutShape as CutShape & { kind: "circle" }).perPage;
+}
+
 function validateInputs(
   tileSize_mm: number,
   paper: Paper,
@@ -109,7 +190,39 @@ export function planSmallTagLayout(
   cutShape: CutShape = { kind: "square" },
 ): LayoutPlan {
   validateInputs(tileSize_mm, paper, options, cutShape);
+  const strategy = resolvePackingStrategy(options, cutShape);
 
+  const placements: Placement[] =
+    strategy === "hex"
+      ? placeHex(tags, tileSize_mm, paper, options, cutShape as CutShape & { kind: "circle" })
+      : placeGrid(tags, tileSize_mm, paper, options, cutShape);
+
+  const perPage = pageCapacity(paper, tileSize_mm, options, cutShape, strategy);
+  const pageCount = tags.length === 0 ? 0 : Math.ceil(tags.length / perPage);
+
+  const cutSegments =
+    cutShape.kind === "square"
+      ? computeGridCutSegments(pageCount, paper, tileSize_mm, options, cutShape)
+      : [];
+
+  const cutCircles =
+    cutShape.kind === "circle"
+      ? computeCutCircles(placements, tileSize_mm, cutShape, options)
+      : [];
+
+  return { paper, options, tileSize_mm, tagSize_mm, pageCount, placements, cutSegments, cutCircles, subtagLevels: [] };
+}
+
+/** Grid placement: tags fill a uniform `cols × rows` lattice, reading order
+ *  top-to-bottom and left-to-right. Used for square cut shapes and for
+ *  circles when the caller requests `packingStrategy: "grid"`. */
+function placeGrid(
+  tags: readonly TagSpec[],
+  tileSize_mm: number,
+  paper: Paper,
+  options: LayoutOptions,
+  cutShape: CutShape,
+): Placement[] {
   const printable_x_mm = paper.width_mm - 2 * options.pageMargin_mm;
   const printable_y_mm = paper.height_mm - 2 * options.pageMargin_mm;
   const cols = tagsPerAxis(printable_x_mm, tileSize_mm, options, cutShape);
@@ -119,18 +232,12 @@ export function planSmallTagLayout(
   const perPage = cols * rows;
   const cell = cellWidth_mm(tileSize_mm, options, cutShape);
   const pitch = pitch_mm(tileSize_mm, options, cutShape);
-  // Block bounds: N cells with (N−1) cutMargin gaps between them.
-  const block_w_mm = cols * cell + (cols - 1) * options.cutMargin_mm;
-  const block_h_mm = rows * cell + (rows - 1) * options.cutMargin_mm;
   const block_x0_mm = options.pageMargin_mm;
   const block_y0_mm = options.pageMargin_mm;
   // Tile offset from cell origin — centres the tile within its cell.
-  // For squares this equals quietZone_mm; for circles it is larger, centering
-  // the cut circle within the cell.
   const tileOffset = (cell - tileSize_mm) / 2;
 
-  const pageCount = tags.length === 0 ? 0 : Math.ceil(tags.length / perPage);
-  const placements: Placement[] = tags.map((tag, i) => {
+  return tags.map((tag, i) => {
     const page = Math.floor(i / perPage);
     const idxOnPage = i % perPage;
     const col = idxOnPage % cols;
@@ -146,28 +253,83 @@ export function planSmallTagLayout(
       y_mm: cellOrigin_y_mm + tileOffset,
     };
   });
+}
 
-  const cutSegments =
-    cutShape.kind === "square"
-      ? computeCutSegments(
-          pageCount,
-          cols,
-          rows,
-          block_x0_mm,
-          block_y0_mm,
-          block_w_mm,
-          block_h_mm,
-          cell,
-          pitch,
-        )
-      : [];
+/** Hex placement: alternating rows are offset by half-pitch in X and a row
+ *  pitch of `(2R+cutMargin)·√3/2` brings each circle into contact with six
+ *  neighbours at the same gap. Reading order matches grid: row 0 is the
+ *  topmost row, columns fill left-to-right within each row. */
+function placeHex(
+  tags: readonly TagSpec[],
+  tileSize_mm: number,
+  paper: Paper,
+  options: LayoutOptions,
+  cutShape: CutShape & { kind: "circle" },
+): Placement[] {
+  const params = hexLatticeParams(paper, options, cutShape);
+  require_(params.perPage >= 1, "no tags fit in printable area");
 
-  const cutCircles =
-    cutShape.kind === "circle"
-      ? computeCutCircles(placements, tileSize_mm, cutShape, options)
-      : [];
+  const { R, pitchX, pitchY, colsEven, colsOdd, numRows, perPage } = params;
+  // Per-row column counts, indexed by row (row 0 is the topmost).
+  const colsPerRow: number[] = [];
+  for (let r = 0; r < numRows; r++) {
+    colsPerRow.push(r % 2 === 0 ? colsEven : colsOdd);
+  }
+  // Cumulative sums let us map idxOnPage → (row, colInRow) in O(log numRows)
+  // — but numRows is small, so linear search is clearer and just as fast.
 
-  return { paper, options, tileSize_mm, tagSize_mm, pageCount, placements, cutSegments, cutCircles, subtagLevels: [] };
+  const topCenterY = paper.height_mm - options.pageMargin_mm - R;
+  const leftCenterX = options.pageMargin_mm + R;
+
+  return tags.map((tag, i) => {
+    const page = Math.floor(i / perPage);
+    let idxOnPage = i % perPage;
+    let row = 0;
+    while (idxOnPage >= colsPerRow[row]!) {
+      idxOnPage -= colsPerRow[row]!;
+      row += 1;
+    }
+    const colInRow = idxOnPage;
+    const offsetX = row % 2 === 1 ? pitchX / 2 : 0;
+    const cx_mm = leftCenterX + offsetX + colInRow * pitchX;
+    const cy_mm = topCenterY - row * pitchY;
+    return {
+      tag,
+      page,
+      x_mm: cx_mm - tileSize_mm / 2,
+      y_mm: cy_mm - tileSize_mm / 2,
+    };
+  });
+}
+
+/** Grid cut segments — wrapper that pulls the geometry out of the caller. */
+function computeGridCutSegments(
+  pageCount: number,
+  paper: Paper,
+  tileSize_mm: number,
+  options: LayoutOptions,
+  cutShape: CutShape,
+): CutSegment[] {
+  const printable_x_mm = paper.width_mm - 2 * options.pageMargin_mm;
+  const printable_y_mm = paper.height_mm - 2 * options.pageMargin_mm;
+  const cols = tagsPerAxis(printable_x_mm, tileSize_mm, options, cutShape);
+  const rows = tagsPerAxis(printable_y_mm, tileSize_mm, options, cutShape);
+  if (cols < 1 || rows < 1) return [];
+  const cell = cellWidth_mm(tileSize_mm, options, cutShape);
+  const pitch = pitch_mm(tileSize_mm, options, cutShape);
+  const block_w_mm = cols * cell + (cols - 1) * options.cutMargin_mm;
+  const block_h_mm = rows * cell + (rows - 1) * options.cutMargin_mm;
+  return computeCutSegments(
+    pageCount,
+    cols,
+    rows,
+    options.pageMargin_mm,
+    options.pageMargin_mm,
+    block_w_mm,
+    block_h_mm,
+    cell,
+    pitch,
+  );
 }
 
 /** One CutCircle per placement: centre at the tile centre, radius from the
@@ -280,6 +442,7 @@ export function maxTagSizeForCount(
       `outerRadius_mm must be non-negative (got ${cutShape.outerRadius_mm})`,
     );
   }
+  const strategy = resolvePackingStrategy(options, cutShape);
 
   const printable_x = paper.width_mm - 2 * options.pageMargin_mm;
   const printable_y = paper.height_mm - 2 * options.pageMargin_mm;
@@ -296,9 +459,8 @@ export function maxTagSizeForCount(
   let hi = upper;
   for (let i = 0; i < 64; i++) {
     const mid = (lo + hi) / 2;
-    const cols = tagsPerAxis(printable_x, mid, options, cutShape);
-    const rows = tagsPerAxis(printable_y, mid, options, cutShape);
-    const fits = cols >= 1 && rows >= 1 && cols * rows * maxPages >= count;
+    const capacity = pageCapacity(paper, mid, options, cutShape, strategy);
+    const fits = capacity >= 1 && capacity * maxPages >= count;
     if (fits) lo = mid;
     else hi = mid;
   }

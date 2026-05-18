@@ -202,16 +202,211 @@ describe("planSmallTagLayout — circle cut shape", () => {
     expect(plan.cutSegments).toEqual([]);
   });
 
-  it("places circle cells across pages", () => {
+  it("places circle cells across pages (grid pagination)", () => {
     // cell = 2*(20+0) = 40 mm; 100×190 mm paper, zero margins → 2 cols × 4 rows
-    // = 8 per page; 30 tags → 4 pages.
+    // = 8 per page; 30 tags → 4 pages. Pinned to grid; hex packs differently.
     const plan = planSmallTagLayout(
       makeTags("tagCircle21h7", 30), 20, { width_mm: 100, height_mm: 190 },
-      noMargins, 20, { kind: "circle", outerRadius_mm: 20 },
+      { ...noMargins, packingStrategy: "grid" }, 20, { kind: "circle", outerRadius_mm: 20 },
     );
     expect(plan.pageCount).toBe(4);
     const onPage1 = plan.cutCircles.filter((c) => c.page === 1);
     expect(onPage1.length).toBe(8);
+  });
+});
+
+describe("planSmallTagLayout — hex packing for circles", () => {
+  // R = outerRadius + quietZone. Pitch within a row is 2R + cutMargin;
+  // vertical row pitch is (2R + cutMargin) * sqrt(3)/2; odd rows offset by
+  // (2R + cutMargin)/2 in X.
+  const SQRT3_2 = Math.sqrt(3) / 2;
+  const outerR = 10;
+  const quiet = 2;
+  const R = outerR + quiet; // 12
+
+  it("defaults to hex for circle cut shape and places more tags than grid", () => {
+    // A4 with R=12, pageMargin=5, cutMargin=0.
+    // Grid:  cols=8, rows=11 → 88 per page.
+    // Hex:   cols_even=8, cols_odd=7, numRows=13 → 7*8 + 6*7 = 98 per page.
+    const opts: LayoutOptions = {
+      pageMargin_mm: 5,
+      quietZone_mm: quiet,
+      cutMargin_mm: 0,
+    };
+    const shape: CutShape = { kind: "circle", outerRadius_mm: outerR };
+    const tileSize = 2 * outerR;
+
+    const hexPlan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 200), tileSize, A4, opts, tileSize, shape,
+    );
+    const gridPlan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 200), tileSize, A4,
+      { ...opts, packingStrategy: "grid" }, tileSize, shape,
+    );
+
+    const hexPerPage = hexPlan.cutCircles.filter((c) => c.page === 0).length;
+    const gridPerPage = gridPlan.cutCircles.filter((c) => c.page === 0).length;
+    expect(hexPerPage).toBe(98);
+    expect(gridPerPage).toBe(88);
+    expect(hexPerPage).toBeGreaterThan(gridPerPage);
+  });
+
+  it("places row 0 / col 0 at top-left, with even-row circles starting flush left", () => {
+    const opts: LayoutOptions = {
+      pageMargin_mm: 5,
+      quietZone_mm: quiet,
+      cutMargin_mm: 0,
+      packingStrategy: "hex",
+    };
+    const shape: CutShape = { kind: "circle", outerRadius_mm: outerR };
+    const tileSize = 2 * outerR;
+
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 30), tileSize, A4, opts, tileSize, shape,
+    );
+
+    // First tag: row 0 (topmost), col 0 — center at (pageMargin + R, paper_h - pageMargin - R).
+    const c0 = plan.cutCircles[0]!;
+    expect(c0.cx_mm).toBeCloseTo(5 + R, 6); // 17
+    expect(c0.cy_mm).toBeCloseTo(A4.height_mm - 5 - R, 6); // 280
+    // Second tag: same row, X-pitch = 2R + cutMargin = 24mm later.
+    const c1 = plan.cutCircles[1]!;
+    expect(c1.cx_mm).toBeCloseTo(5 + R + 24, 6); // 41
+    expect(c1.cy_mm).toBeCloseTo(c0.cy_mm, 6);
+  });
+
+  it("offsets odd rows by half-pitch in X and (2R+cm)·√3/2 in Y", () => {
+    const opts: LayoutOptions = {
+      pageMargin_mm: 5,
+      quietZone_mm: quiet,
+      cutMargin_mm: 0,
+      packingStrategy: "hex",
+    };
+    const shape: CutShape = { kind: "circle", outerRadius_mm: outerR };
+    const tileSize = 2 * outerR;
+
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 30), tileSize, A4, opts, tileSize, shape,
+    );
+
+    // Row 0 holds 8 tags (cols_even). Tag 8 is row 1, col 0.
+    // Row 1's first center: x = pageMargin + R + (2R)/2, y = top - (2R)·√3/2.
+    const row1col0 = plan.cutCircles[8]!;
+    expect(row1col0.cx_mm).toBeCloseTo(5 + R + 24 / 2, 6); // 29
+    expect(row1col0.cy_mm).toBeCloseTo(A4.height_mm - 5 - R - 24 * SQRT3_2, 6);
+  });
+
+  it("preserves the minimum center-to-center distance (no overlapping cuts)", () => {
+    const opts: LayoutOptions = {
+      pageMargin_mm: 5,
+      quietZone_mm: quiet,
+      cutMargin_mm: 2,
+      packingStrategy: "hex",
+    };
+    const shape: CutShape = { kind: "circle", outerRadius_mm: outerR };
+    const tileSize = 2 * outerR;
+
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 60), tileSize, A4, opts, tileSize, shape,
+    );
+
+    // Every pair of circles on the same page must be at least 2R + cutMargin apart.
+    const minDist = 2 * R + opts.cutMargin_mm;
+    const onPage0 = plan.cutCircles.filter((c) => c.page === 0);
+    expect(onPage0.length).toBeGreaterThan(1);
+    for (let i = 0; i < onPage0.length; i++) {
+      for (let j = i + 1; j < onPage0.length; j++) {
+        const a = onPage0[i]!;
+        const b = onPage0[j]!;
+        const d = Math.hypot(a.cx_mm - b.cx_mm, a.cy_mm - b.cy_mm);
+        expect(d).toBeGreaterThanOrEqual(minDist - 1e-6);
+      }
+    }
+  });
+
+  it("keeps all cut circles inside the printable area", () => {
+    const opts: LayoutOptions = {
+      pageMargin_mm: 5,
+      quietZone_mm: quiet,
+      cutMargin_mm: 1,
+      packingStrategy: "hex",
+    };
+    const shape: CutShape = { kind: "circle", outerRadius_mm: outerR };
+    const tileSize = 2 * outerR;
+
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 200), tileSize, A4, opts, tileSize, shape,
+    );
+
+    for (const c of plan.cutCircles) {
+      expect(c.cx_mm - c.radius_mm).toBeGreaterThanOrEqual(opts.pageMargin_mm - 1e-6);
+      expect(c.cx_mm + c.radius_mm).toBeLessThanOrEqual(
+        A4.width_mm - opts.pageMargin_mm + 1e-6,
+      );
+      expect(c.cy_mm - c.radius_mm).toBeGreaterThanOrEqual(opts.pageMargin_mm - 1e-6);
+      expect(c.cy_mm + c.radius_mm).toBeLessThanOrEqual(
+        A4.height_mm - opts.pageMargin_mm + 1e-6,
+      );
+    }
+  });
+
+  it("explicit packingStrategy=grid keeps the original grid behaviour", () => {
+    const opts: LayoutOptions = {
+      pageMargin_mm: 5,
+      quietZone_mm: quiet,
+      cutMargin_mm: 0,
+      packingStrategy: "grid",
+    };
+    const shape: CutShape = { kind: "circle", outerRadius_mm: outerR };
+    const tileSize = 2 * outerR;
+
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 100), tileSize, A4, opts, tileSize, shape,
+    );
+
+    // All circles on a row share cy; same-x stride is 2R+cutMargin.
+    const onPage0 = plan.cutCircles.filter((c) => c.page === 0);
+    const topRow = onPage0.filter((c) => Math.abs(c.cy_mm - onPage0[0]!.cy_mm) < 1e-6);
+    expect(topRow.length).toBe(8); // cols
+    expect(topRow[1]!.cx_mm - topRow[0]!.cx_mm).toBeCloseTo(2 * R, 6);
+  });
+
+  it("rejects packingStrategy=hex with a square cut shape", () => {
+    const opts: LayoutOptions = {
+      pageMargin_mm: 0,
+      quietZone_mm: 0,
+      cutMargin_mm: 0,
+      packingStrategy: "hex",
+    };
+    expect(() =>
+      planSmallTagLayout(makeTags("tag36h11", 4), 20, square100, opts),
+    ).toThrow(/hex.*square/i);
+  });
+
+  it("defaults to grid for square cut shape (no behaviour change)", () => {
+    // Same case as the very first grid test, with no packingStrategy set.
+    const plan = planSmallTagLayout(makeTags("tag36h11", 25), 20, square100, noMargins);
+    expect(plan.placements).toHaveLength(25);
+    expect(plan.placements[0]).toMatchObject({ x_mm: 0, page: 0 });
+  });
+});
+
+describe("maxTagSizeForCount — hex packing", () => {
+  it("fits a count of circles under hex that grid cannot", () => {
+    // Grid fits 88 circles per page in this configuration (A4, R=12mm);
+    // hex fits 98. A count of 95 succeeds only under hex.
+    const opts: LayoutOptions = {
+      pageMargin_mm: 5,
+      quietZone_mm: 2,
+      cutMargin_mm: 0,
+    };
+    const shape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const hexSize = maxTagSizeForCount(95, A4, opts, 1, shape);
+    const gridSize = maxTagSizeForCount(
+      95, A4, { ...opts, packingStrategy: "grid" }, 1, shape,
+    );
+    expect(gridSize).toBe(0);
+    expect(hexSize).toBeGreaterThan(0);
   });
 });
 
