@@ -17,6 +17,17 @@ Source of truth for tag bitmaps is the official `apriltag-imgs` repository.
 The app does not reimplement tag-family math; it scales known-correct
 bitmaps with nearest-neighbor (or emits SVG rectangles directly).
 
+# Improvements and Possible Changes
+
+After reviewing other websites which have also made AprilTag generators, I have compiled a list of deficiencies and things to improve, from most important to least:
+
+ - Shape packing is overly crude an inefficient. This is especially true for circular tags. While optimal packings are unnecessary, there should be more strategy in shape packing.
+ - The preview region is too small; conversely, the options area takes up too much space.
+ - Custom paper dimensions
+ -  UI is too plain, even given STYLES.md.
+- Size should be a slider, not an increment (textbox option still stays).
+ - Self-advertising and shilling.
+
 # Continuous Summary Updates
 
 Instead of reading the entire project every time you need to make a change, read STRUCTURE.md, then read only relevant files. I repeat, you do NOT need to read everything or explore the filestructure of a project. You just need to read STRUCTURE.md.
