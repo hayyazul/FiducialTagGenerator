@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planSmallTagLayout } from "../layout/plan";
+import { planSmallTagLayout, type CutShape } from "../layout/plan";
 import type { LayoutOptions, Paper } from "../layout/types";
 import { renderPlanToSvg } from "./svg";
 
@@ -129,5 +129,56 @@ describe("renderPlanToSvg", () => {
       { printLabelsInQuietZone: true },
     );
     expect(svg).not.toContain("tag36h11 #5 · 20 mm");
+  });
+
+  it("draws circle cuts for a circular plan and no line cuts", () => {
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const plan = planSmallTagLayout(
+      [{ family: "tagCircle21h7", id: 0 }],
+      20,
+      square100,
+      minimalOpts,
+      20,
+      circleShape,
+    );
+    const svg = renderPlanToSvg(plan, 0);
+    expect(svg).toContain("<circle");
+    expect(svg).toContain(`stroke="${"#8c8c8c"}"`);
+    expect(svg).not.toContain("<line");
+  });
+
+  it("filters circle cuts to the requested page only", () => {
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 15 };
+    const plan = planSmallTagLayout(
+      Array.from({ length: 9 }, (_, i) => ({ family: "tagCircle21h7", id: i })),
+      15,
+      { width_mm: 100, height_mm: 100 },
+      minimalOpts,
+      15,
+      circleShape,
+    );
+    // Multiple pages; page 0 should still only have its own circles.
+    expect(plan.pageCount).toBeGreaterThanOrEqual(1);
+    // Count circle elements: on a single-page render, exactly the per-page count.
+    const placementsOnPage0 = plan.placements.filter((p) => p.page === 0).length;
+    const svg = renderPlanToSvg(plan, 0);
+    const circleCount = (svg.match(/<circle /g) ?? []).length;
+    expect(circleCount).toBe(placementsOnPage0);
+  });
+
+  it("draws circle cuts with correct radius in the SVG", () => {
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 2, cutMargin_mm: 0 };
+    const plan = planSmallTagLayout(
+      [{ family: "tagCircle21h7", id: 0 }],
+      20,
+      square100,
+      opts,
+      20,
+      circleShape,
+    );
+    const svg = renderPlanToSvg(plan, 0);
+    // radius = outerRadius + quietZone = 12
+    expect(svg).toContain('r="12"');
   });
 });

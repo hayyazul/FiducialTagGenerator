@@ -215,6 +215,16 @@ function drawTagPage(
       thickness: 0.25,
     });
   }
+  for (const c of plan.cutCircles) {
+    if (c.page !== pageIndex) continue;
+    page.drawCircle({
+      x: mm(c.cx_mm),
+      y: mm(c.cy_mm),
+      size: mm(c.radius_mm),
+      borderColor: rgb(0.55, 0.55, 0.55),
+      borderWidth: 0.25,
+    });
+  }
 
   drawRegistrationCorners(page, plan);
 
@@ -359,6 +369,16 @@ function drawBackPage(
       end: { x: mm(W_mm - c.x1_mm), y: mm(c.y1_mm) },
       color: rgb(0.55, 0.55, 0.55),
       thickness: 0.25,
+    });
+  }
+  for (const c of plan.cutCircles) {
+    if (c.page !== pageIndex) continue;
+    page.drawCircle({
+      x: mm(W_mm - c.cx_mm),
+      y: mm(c.cy_mm),
+      size: mm(c.radius_mm),
+      borderColor: rgb(0.55, 0.55, 0.55),
+      borderWidth: 0.25,
     });
   }
   // Registration marks: corner positions are symmetric in x (margin /

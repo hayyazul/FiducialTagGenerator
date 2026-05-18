@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { BitsProvider } from "../families";
 import { planSmallTagLayout } from "../layout/plan";
 import type { LayoutOptions, Paper, TagSpec } from "../layout/types";
+import type { CutShape } from "../layout/plan";
 import { renderPlan } from "./pdf";
 
 const square100: Paper = { width_mm: 100, height_mm: 100 };
@@ -97,6 +98,30 @@ describe("renderPlan", () => {
     // The captions go inside the existing layout pages — no page added.
     expect(reloaded.getPageCount()).toBe(1 + plan.pageCount);
     expect(bytes.length).toBeGreaterThan(100);
+  });
+
+  it("renders a circle plan as a valid PDF with correct page count", async () => {
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts, 20, circleShape);
+    const bytes = await renderPlan(plan, fakeBits);
+    const reloaded = await PDFDocument.load(bytes);
+    expect(reloaded.getPageCount()).toBe(plan.pageCount + 1);
+  });
+
+  it("renders a circle plan with back pages", async () => {
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts, 20, circleShape);
+    const bytes = await renderPlan(plan, fakeBits, { printLabelsOnBack: true });
+    const reloaded = await PDFDocument.load(bytes);
+    expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
+  });
+
+  it("renders a circle plan with in-quiet-zone labels suppressed", async () => {
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts, 20, circleShape);
+    const bytes = await renderPlan(plan, fakeBits, { printLabelsInQuietZone: true });
+    const reloaded = await PDFDocument.load(bytes);
+    expect(reloaded.getPageCount()).toBe(plan.pageCount + 1);
   });
 
   it("renders cleanly when tag IDs are non-contiguous", async () => {

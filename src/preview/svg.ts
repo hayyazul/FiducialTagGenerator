@@ -56,6 +56,7 @@ export function renderPlanToSvg(
 
   const placements = plan.placements.filter((p) => p.page === page);
   const cuts = plan.cutSegments.filter((c) => c.page === page);
+  const circles = plan.cutCircles.filter((c) => c.page === page);
 
   const tagShapes = placements
     .map((p) => {
@@ -80,6 +81,14 @@ export function renderPlanToSvg(
     )
     .join("");
 
+  const cutCirclesSvg = circles
+    .map(
+      (c) =>
+        `<circle cx="${c.cx_mm}" cy="${flipY(c.cy_mm)}" r="${c.radius_mm}" ` +
+        `fill="none" stroke="${CUT_LINE}" stroke-width="0.25"/>`,
+    )
+    .join("");
+
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" ` +
     `width="100%" style="background:#fff;border:1px solid #999;display:block">` +
@@ -87,6 +96,7 @@ export function renderPlanToSvg(
     renderRegistrationMarks(plan, flipY) +
     tagShapes +
     cutLines +
+    cutCirclesSvg +
     `</svg>`
   );
 }
