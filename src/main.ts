@@ -33,7 +33,7 @@ function buildFamilyOptionsMarkup(): string {
 }
 import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { parseTagIdSpec } from "./ids";
-import { planSmallTagLayout } from "./layout/plan";
+import { planSmallTagLayout, type CutShape } from "./layout/plan";
 import type { LayoutOptions, LayoutPlan, Paper, TagSpec } from "./layout/types";
 import { renderPlanToSvg } from "./preview/svg";
 import { createTagImageProvider } from "./preview/tag-images";
@@ -122,19 +122,24 @@ function readForm(): FormState {
   };
 }
 
-/** "Total size" = the printed tile + the quiet zone on every side. The
- *  printed tile is the full mosaic tile, which is wider than the spec tag
- *  size by `tileSize_px / widthAtBorder_modules`. With the override off the
- *  quiet zone is the auto half-module width; with it on, the user supplies
- *  the quiet zone directly. Returns null when inputs aren't usable. */
+/** "Total size" = the tag plus its quiet zone on every side. For square
+ *  families this is `tileSize + 2·quietZone`; for circle families it is the
+ *  cut circle's diameter `2·(outerRadius + quietZone)`. The printed tile is
+ *  the full mosaic tile, which is wider than the spec tag size by
+ *  `tileSize_px / widthAtBorder_modules`. Returns null when inputs aren't
+ *  usable. */
 function totalSizeFromTag(s: FormState, familyDef: TagFamilyDef | undefined): number | null {
   if (!familyDef || !Number.isFinite(s.tagSize_mm) || s.tagSize_mm <= 0) return null;
-  const tile_mm = tileSize_mmFromTagSize(s.tagSize_mm, familyDef);
   const qz = s.overrideAdvanced
     ? Number.isFinite(s.quietZone_mm) && s.quietZone_mm >= 0
       ? s.quietZone_mm
       : 0
     : deriveQuietZone_mm(s.tagSize_mm, familyDef);
+  if (familyDef.shape === "circle") {
+    const outerRadius_mm = familyDef.outerRadius_modules! * s.tagSize_mm / familyDef.widthAtBorder_modules;
+    return 2 * (outerRadius_mm + qz);
+  }
+  const tile_mm = tileSize_mmFromTagSize(s.tagSize_mm, familyDef);
   return tile_mm + 2 * qz;
 }
 
@@ -166,21 +171,35 @@ function syncDependentFields(s: FormState, familyDef: TagFamilyDef | undefined):
 }
 
 /** When the user edits Total size directly (only possible with the override
- *  off), push the implied tag size back into the Tag size field. `recompute`
- *  then re-reads the form and renders from that.
- *
- *  Total = tile + 2·qz = tagSize·(tile/wab) + 2·(0.5·tagSize/wab)
- *        = tagSize·((tile + 1)/wab)
- *  ⇒ tagSize = Total · wab / (tile + 1). */
+ *  off), push the implied tag size back into the Tag size field. For square
+ *  families this inverts the tile+2·qz formula; for circle families it
+ *  inverts 2·(outerRadius+qz). */
 function handleTotalSizeInput(): void {
   const total = field("totalSize") as HTMLInputElement;
   if (total.disabled) return;
   const familyDef = getFamily(field("family").value);
   const totalVal = Number.parseFloat(total.value);
   if (!familyDef || !Number.isFinite(totalVal) || totalVal <= 0) return;
-  const tile = familyDef.tileSize_px;
   const wab = familyDef.widthAtBorder_modules;
-  if (tile <= 0 || wab <= 0) return;
+  if (wab <= 0) return;
+  if (familyDef.shape === "circle") {
+    const R = familyDef.outerRadius_modules!;
+    const override = (field("overrideAdvanced") as HTMLInputElement).checked;
+    let tagSize: number;
+    if (override) {
+      const qz = Number.parseFloat((field("quietZone") as HTMLInputElement).value) || 0;
+      // Total = 2·(R·tagSize/wab + qz) ⇒ tagSize = (Total/2 − qz) · wab / R
+      tagSize = Math.max(0, (totalVal / 2 - qz)) * wab / R;
+    } else {
+      // Total = 2·(R + 0.5) · tagSize / wab ⇒ tagSize = Total · wab / (2·(R+0.5))
+      tagSize = (totalVal * wab) / (2 * (R + 0.5));
+    }
+    (field("tagSize") as HTMLInputElement).value = tagSize.toFixed(2);
+    return;
+  }
+  const tile = familyDef.tileSize_px;
+  if (tile <= 0) return;
+  // Square: Total = tagSize·(tile/wab) + 2·(0.5·tagSize/wab) = tagSize·((tile+1)/wab)
   (field("tagSize") as HTMLInputElement).value = (
     (totalVal * wab) / (tile + 1)
   ).toFixed(2);
@@ -371,9 +390,22 @@ function recompute(): void {
   };
 
   const tileSize_mm = tileSize_mmFromTagSize(effective.tagSize_mm, familyDef);
+  const cutShape: CutShape =
+    familyDef.shape === "circle"
+      ? {
+          kind: "circle",
+          outerRadius_mm:
+            (familyDef.outerRadius_modules! * tileSize_mm) / familyDef.tileSize_px,
+        }
+      : { kind: "square" };
+  // Hide the front quiet-zone label option for circle families — the label
+  // sits outside the cut circle and would not survive trimming.
+  const elQuietLabel = document.getElementById("quietLabelRow");
+  if (elQuietLabel) elQuietLabel.style.display = familyDef.shape === "circle" ? "none" : "";
+
   let plan: LayoutPlan;
   try {
-    plan = planSmallTagLayout(tags, tileSize_mm, paper, options, effective.tagSize_mm);
+    plan = planSmallTagLayout(tags, tileSize_mm, paper, options, effective.tagSize_mm, cutShape);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (/does not fit on paper|no tags fit/i.test(message)) {
@@ -394,7 +426,10 @@ function recompute(): void {
   }
 
   const loaded = loadedFamilies.has(effective.family);
-  const cellWidth = tileSize_mm + 2 * effective.quietZone_mm;
+  const cellWidth_mm =
+    cutShape.kind === "circle"
+      ? 2 * (cutShape.outerRadius_mm + effective.quietZone_mm)
+      : tileSize_mm + 2 * effective.quietZone_mm;
   const summary =
     `${plan.placements.length} tag${plan.placements.length === 1 ? "" : "s"} ` +
     `across ${plan.pageCount} page${plan.pageCount === 1 ? "" : "s"} on ` +
@@ -404,7 +439,7 @@ function recompute(): void {
     `(printed tile ${tileSize_mm.toFixed(2)} mm); ` +
     `quiet zone ${effective.quietZone_mm.toFixed(2)} mm; ` +
     `cut margin ${effective.cutMargin_mm.toFixed(2)} mm; ` +
-    `printed cell ${cellWidth.toFixed(2)} mm.`;
+    `printed cell ${cellWidth_mm.toFixed(2)} mm.`;
   const info = document.getElementById("info");
   if (info) {
     info.innerHTML =
@@ -497,7 +532,7 @@ function bootstrap(): void {
               <label><input type="checkbox" id="printLabelsOnBack"> Print tag info on backside</label>
               <span style="color:#888;font-size:0.85em">for double-sided printing (long-edge / horizontal flip)</span>
             </div>
-            <div style="margin-top:0.3rem">
+            <div id="quietLabelRow" style="margin-top:0.3rem">
               <label><input type="checkbox" id="printLabelsInQuietZone"> Print tag info in the quiet zone (front)</label>
               <span style="color:#888;font-size:0.85em">stays on the cut-out tag; small print — best at ~20 mm tags or larger</span>
             </div>
