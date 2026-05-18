@@ -86,8 +86,8 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 
 | File | Role |
 |------|------|
-| `docs/code-smells.md` | Living list of code smells noticed during development with locations and rationale. |
-| `docs/superpowers/specs/2026-05-17-circular-tags-design.md` | Architectural design spec for circular AprilTag family support. |
+| `docs/superpowers/specs/2026-05-18-family-abstraction-design.md` | Architectural design spec: replace the mosaic-only family layer with a `Family` interface that hides mosaic vs procedural vs alias backings (forcing function: ArUco). |
+| `docs/superpowers/specs/2026-05-18-canvas-and-exports-design.md` | Architectural design spec: collapse the duplicated PDF and SVG drawing code behind a `Canvas` interface and add packed / per-tag SVG and PNG exports. |
 
 ### CI/CD
 
