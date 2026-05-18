@@ -168,6 +168,51 @@ describe("renderPlanToSvg", () => {
     expect(svg).toContain("&gt; tag36h11 #5 · 3.2 mm");
   });
 
+  it("renders curved quiet-zone text for circular tags with per-character rotation", () => {
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const plan = planSmallTagLayout(
+      [{ family: "tagCircle21h7", id: 0 }],
+      20,
+      square100,
+      { pageMargin_mm: 5, quietZone_mm: 2, cutMargin_mm: 0 },
+      20,
+      circleShape,
+    );
+    const svg = renderPlanToSvg(
+      plan,
+      0,
+      { imageHref: () => "data:image/png;base64,AAAA" },
+      { printLabelsInQuietZone: true },
+    );
+    // Curved text places each character individually along the arc, so the
+    // full caption string won't appear contiguously. Check for individual chars.
+    expect(svg).toContain(">t<");
+    expect(svg).toContain(">0<");
+    // Each character is rotated tangent to the circle.
+    expect(svg).toContain('transform="rotate(');
+    const rotateCount = (svg.match(/transform="rotate\(/g) ?? []).length;
+    expect(rotateCount).toBeGreaterThan(10);
+  });
+
+  it("suppresses curved quiet-zone text when there is no quiet zone even for circles", () => {
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const plan = planSmallTagLayout(
+      [{ family: "tagCircle21h7", id: 0 }],
+      20,
+      square100,
+      { pageMargin_mm: 5, quietZone_mm: 0, cutMargin_mm: 0 },
+      20,
+      circleShape,
+    );
+    const svg = renderPlanToSvg(
+      plan,
+      0,
+      { imageHref: () => "data:image/png;base64,AAAA" },
+      { printLabelsInQuietZone: true },
+    );
+    expect(svg).not.toContain("tagCircle21h7 #0");
+  });
+
   it("draws circle cuts for a circular plan and no line cuts", () => {
     const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
     const plan = planSmallTagLayout(

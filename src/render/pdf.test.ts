@@ -116,7 +116,7 @@ describe("renderPlan", () => {
     expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
   });
 
-  it("renders a circle plan with in-quiet-zone labels suppressed", async () => {
+  it("renders a circle plan with in-quiet-zone labels (curved text)", async () => {
     const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts, 20, circleShape);
     const bytes = await renderPlan(plan, fakeBits, { printLabelsInQuietZone: true });

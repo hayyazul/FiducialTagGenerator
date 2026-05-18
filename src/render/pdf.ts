@@ -3,6 +3,7 @@ import {
   type PDFFont,
   type PDFPage,
   StandardFonts,
+  degrees,
   rgb,
 } from "pdf-lib";
 import { type BitsProvider, getFamily } from "../families";
@@ -239,10 +240,9 @@ function drawTagPage(
 
 /**
  * Set the tag's caption inside its bottom quiet-zone band on the front, so it
- * survives on the cut-out tag. The text occupies the lower part of the band
- * (~0.6× the band height), leaving the strip next to the bitmap clear; it is
- * shrunk to fit the tag's own width so it never reaches a neighbour's cut
- * line. This does eat into the otherwise-clear quiet zone, hence opt-in.
+ * survives on the cut-out tag. For square tags the text occupies the lower part
+ * of the rectangular band; for circular tags the text curves along the inside
+ * of the quiet-zone ring.
  */
 function drawQuietZoneLabel(
   page: PDFPage,
@@ -252,6 +252,11 @@ function drawQuietZoneLabel(
 ): void {
   const Q_mm = plan.options.quietZone_mm;
   if (Q_mm <= 0) return;
+  const isCircular = plan.cutCircles.length > 0;
+  if (isCircular) {
+    drawCircularQuietZoneLabel(page, font, placement, plan);
+    return;
+  }
   const tile_mm = plan.tileSize_mm;
   const mainText = tagCaptionLine(placement.tag.family, placement.tag.id, plan.tagSize_mm);
   const subText = subtagChainLabel(placement.tag.subtag, plan.subtagLevels);
@@ -275,6 +280,88 @@ function drawQuietZoneLabel(
     const x = mm(placement.x_mm + tile_mm / 2) - w / 2;
     const y = mm(placement.y_mm - Q_mm + Q_mm * 0.28);
     page.drawText(mainText, { x, y, font, size: fontPt, color: rgb(0, 0, 0) });
+  }
+}
+
+/** Draw a string centred along the bottom arc of a circle, one character at a
+ *  time so each glyph is tangent to the curve. `radius_mm` is the baseline
+ *  radius; `centerAngle_deg` is the arc midpoint (90 = bottom in SVG-y-down
+ *  convention). `maxArc_deg` caps the angular span. */
+function drawCurvedText(
+  page: PDFPage,
+  font: PDFFont,
+  text: string,
+  cx_mm: number,
+  cy_mm: number,
+  radius_mm: number,
+  fontPt: number,
+  maxArc_deg: number,
+): void {
+  if (text.length === 0) return;
+  const charWidth_mm = (fontPt / MM_TO_PT) * 0.6;
+  const totalArc_mm = text.length * charWidth_mm;
+  const totalArc_rad = Math.min(totalArc_mm / radius_mm, (maxArc_deg * Math.PI) / 180);
+  const halfArc_rad = totalArc_rad / 2;
+
+  // Characters are placed left-to-right, starting from the left side of the arc.
+  // In PDF coords (y-up), "bottom" is angle −90° (or 3π/2). Text reads
+  // left-to-right so it runs from (−90° − halfArc) to (−90° + halfArc).
+  const startAngle_rad = -Math.PI / 2 - halfArc_rad;
+  const angleStep_rad = text.length > 1 ? totalArc_rad / (text.length - 1) : 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const theta = startAngle_rad + i * angleStep_rad;
+    const px = cx_mm + radius_mm * Math.cos(theta);
+    const py = cy_mm + radius_mm * Math.sin(theta);
+    // Tangent direction for left-to-right reading along the bottom arc:
+    // derivative of (cos θ, sin θ) is (−sin θ, cos θ), which points CCW.
+    const rot_deg = (theta + Math.PI / 2) * (180 / Math.PI);
+    const w = font.widthOfTextAtSize(text[i]!, fontPt);
+    page.drawText(text[i]!, {
+      x: mm(px) - w / 2,
+      y: mm(py) - fontPt * 0.25,
+      font,
+      size: fontPt,
+      rotate: degrees(rot_deg),
+      color: rgb(0, 0, 0),
+    });
+  }
+}
+
+function drawCircularQuietZoneLabel(
+  page: PDFPage,
+  font: PDFFont,
+  placement: Placement,
+  plan: LayoutPlan,
+): void {
+  const Q_mm = plan.options.quietZone_mm;
+  const tile_mm = plan.tileSize_mm;
+  const cutRadius_mm = plan.cutCircles[0]?.radius_mm ?? tile_mm / 2 + Q_mm;
+  const cx_mm = placement.x_mm + tile_mm / 2;
+  const cy_mm = placement.y_mm + tile_mm / 2;
+
+  const mainText = tagCaptionLine(placement.tag.family, placement.tag.id, plan.tagSize_mm);
+  const subText = subtagChainLabel(placement.tag.subtag, plan.subtagLevels);
+
+  // Limit font height to the quiet-zone ring thickness and arc span to ~120°.
+  const maxArc_deg = 120;
+
+  if (subText) {
+    // Two lines: main at outer radius, sub at inner radius.
+    const textRadiusOuter = cutRadius_mm - Q_mm * 0.3;
+    const textRadiusInner = cutRadius_mm - Q_mm * 0.8;
+    const maxFontH_mm = Q_mm * 0.35;
+    for (const [text, radius] of [[mainText, textRadiusOuter], [subText, textRadiusInner]] as const) {
+      const maxFontArc_mm = (radius * maxArc_deg * Math.PI) / 180 / (text.length * 0.6);
+      const fontPt = Math.max(1, mm(Math.min(maxFontH_mm, maxFontArc_mm)));
+      drawCurvedText(page, font, text, cx_mm, cy_mm, radius, fontPt, maxArc_deg);
+    }
+  } else {
+    const textRadius = cutRadius_mm - Q_mm * 0.5;
+    const maxFontH_mm = Q_mm * 0.7;
+    const maxFontArc_mm = (textRadius * maxArc_deg * Math.PI) / 180 / (mainText.length * 0.6);
+    const fontPt = Math.max(1, mm(Math.min(maxFontH_mm, maxFontArc_mm)));
+    drawCurvedText(page, font, mainText, cx_mm, cy_mm, textRadius, fontPt, maxArc_deg);
   }
 }
 
@@ -438,7 +525,7 @@ function drawBackPage(
     if (placement.page !== pageIndex) continue;
     const x_back_mm = W_mm - placement.x_mm - tile_mm;
     const y_back_mm = placement.y_mm;
-    drawBackLabel(page, font, fontBold, placement, x_back_mm, y_back_mm, tile_mm, tagSpec_mm, plan.subtagLevels);
+    drawBackLabel(page, font, fontBold, placement, x_back_mm, y_back_mm, tile_mm, tagSpec_mm, plan.subtagLevels, plan.cutCircles.length > 0);
   }
 
   drawPageFooter(page, font, plan, pageIndex, true);
@@ -454,17 +541,29 @@ function drawBackLabel(
   tile_mm: number,
   tagSpec_mm: number,
   subtagLevels: SubtagLevel[],
+  isCircular: boolean,
 ): void {
   // Faint border so the user can see the bounds of each tag on the back side
-  // (no bitmap to give it shape).
-  page.drawRectangle({
-    x: mm(x_mm),
-    y: mm(y_mm),
-    width: mm(tile_mm),
-    height: mm(tile_mm),
-    borderColor: rgb(0.75, 0.75, 0.75),
-    borderWidth: 0.2,
-  });
+  // (no bitmap to give it shape). Circular tags get a matching circle.
+  if (isCircular) {
+    const radius = tile_mm / 2;
+    page.drawCircle({
+      x: mm(x_mm + radius),
+      y: mm(y_mm + radius),
+      size: mm(radius),
+      borderColor: rgb(0.75, 0.75, 0.75),
+      borderWidth: 0.2,
+    });
+  } else {
+    page.drawRectangle({
+      x: mm(x_mm),
+      y: mm(y_mm),
+      width: mm(tile_mm),
+      height: mm(tile_mm),
+      borderColor: rgb(0.75, 0.75, 0.75),
+      borderWidth: 0.2,
+    });
+  }
 
   const lines: Array<{ text: string; bold: boolean }> = [
     { text: placement.tag.family, bold: false },

@@ -26,7 +26,7 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 
 | File | Role |
 |------|------|
-| `src/main.ts` | Application entry point and UI orchestrator: builds the HTML form, reads form state, validates inputs, lazy-loads family mosaics, computes the layout plan, renders SVG previews, and triggers PDF download. |
+| `src/main.ts` | Application entry point and UI orchestrator: builds the HTML form with recursive sub-tag UI, reads form state, validates inputs, lazy-loads family mosaics, computes the layout plan, renders SVG previews, and triggers PDF download. |
 | `src/families/index.ts` | Tag family registry defining all supported families with their mosaic paths and geometry, plus pure functions for mosaic grid calculation, bit extraction, and circle masks. |
 | `src/families/load.ts` | Browser-side mosaic loader: fetches a family's PNG, decodes it via canvas into grayscale pixels, and returns a `FamilyBitmaps` object with per-tag-id bit-grid lookup. |
 | `src/families/index.test.ts` | Unit tests for family registry functions: mosaic grid math, bit extraction, circle masks, occupied-mask application, and outer-radius measurement. |
@@ -35,12 +35,12 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 | `src/layout/types.ts` | Domain types for the layout engine: `TagSpec`, `Paper`, `LayoutOptions`, `Placement`, `CutSegment`, `CutCircle`, and `LayoutPlan` — all in millimetres with bottom-left origin. |
 | `src/layout/plan.ts` | Layout planner: packs tags into a grid across pages given paper size, margins, and cut shape; computes placements, cut geometry, and page count. |
 | `src/layout/plan.test.ts` | Unit tests for the layout planner: grid capacity, cut-segment generation, circle-plan geometry, and `maxTagSizeForCount` bounds. |
-| `src/preview/svg.ts` | SVG preview renderer: converts one page of a `LayoutPlan` to an SVG string with tag images, cut lines/circles, registration marks, and optional captions. |
-| `src/preview/svg.test.ts` | Unit tests for SVG rendering: placeholder fallback, image rendering, XML escaping, colour/style invariants, registration marks, and circle output. |
+| `src/preview/svg.ts` | SVG preview renderer: converts one page of a `LayoutPlan` to an SVG string with tag images, cut lines/circles, registration marks, curved or linear captions, and sub-tag overlays. |
+| `src/preview/svg.test.ts` | Unit tests for SVG rendering: placeholder fallback, image rendering, XML escaping, colour/style invariants, registration marks, circle output, sub-tag overlays, and curved quiet-zone text. |
 | `src/preview/tag-images.ts` | Tag bitmap rasteriser: converts bit grids into 1-pixel-per-bit PNG data URIs via an offscreen canvas, caching results for the preview. |
 | `src/preview/tag-images.test.ts` | Unit tests for `bitsToRgba`: black/white RGBA mapping and correct row ordering. |
-| `src/render/pdf.ts` | PDF renderer: converts a `LayoutPlan` into a multi-page PDF with calibration sheet, vector-drawn tags, cut lines/circles, registration marks, captions, and page footers. |
-| `src/render/pdf.test.ts` | Unit tests for PDF rendering: round-trip parse validation, page sizing, placeholder rendering, back-page generation, and quiet-zone label output. |
+| `src/render/pdf.ts` | PDF renderer: converts a `LayoutPlan` into a multi-page PDF with calibration sheet, vector-drawn tags, cut lines/circles, registration marks, curved or linear captions, back labels, and page footers. |
+| `src/render/pdf.test.ts` | Unit tests for PDF rendering: round-trip parse validation, page sizing, placeholder rendering, back-page generation, circular quiet-zone labels, and subtag support. |
 | `src/tag-caption.ts` | Shared utility producing the one-line tag identification string (e.g. "tag36h11 #5 · 40 mm") and a size formatter, consumed by both renderers. |
 | `src/tag-caption.test.ts` | Unit tests for `formatTagSize` (decimal rounding) and `tagCaptionLine` (combined label output). |
 

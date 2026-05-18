@@ -451,10 +451,7 @@ function recompute(): void {
             (familyDef.outerRadius_modules! * tileSize_mm) / familyDef.tileSize_px,
         }
       : { kind: "square" };
-  // Hide the front quiet-zone label option for circle families — the label
-  // sits outside the cut circle and would not survive trimming.
-  const elQuietLabel = document.getElementById("quietLabelRow");
-  if (elQuietLabel) elQuietLabel.style.display = familyDef.shape === "circle" ? "none" : "";
+  // All families now support quiet-zone labels (square: linear, circle: curved).
 
   let plan: LayoutPlan;
   try {

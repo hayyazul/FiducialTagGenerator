@@ -165,8 +165,8 @@ function renderPlaceholder(
 
 /** The "<family> #<id> · <size>" caption `render/pdf` sets inside each tag's
  *  bottom quiet-zone band when the "print tag info in the quiet zone" output
- *  option is on. Sized to ~0.6× the quiet-zone width and shrunk to fit the
- *  tag's own width; omitted when there is no quiet zone. Mirrors
+ *  option is on. For square tags the text is linear; for circular tags each
+ *  character curves along the inside of the quiet-zone ring. Mirrors
  *  `drawQuietZoneLabel`. */
 function renderQuietZoneLabel(
   plan: LayoutPlan,
@@ -180,6 +180,10 @@ function renderQuietZoneLabel(
 ): string {
   const Q = plan.options.quietZone_mm;
   if (Q <= 0) return "";
+  const isCircular = plan.cutCircles.length > 0;
+  if (isCircular) {
+    return renderCircularQuietZoneLabel(plan, x_mm, y_mm, tile_mm, family, id, subtag, flipY);
+  }
   const mainText = tagCaptionLine(family, id, plan.tagSize_mm);
   const subText = svgSubtagChainLabel(subtag, plan.subtagLevels);
   const cx = x_mm + tile_mm / 2;
@@ -204,6 +208,81 @@ function renderQuietZoneLabel(
     `font-size="${fontSize_mm}" text-anchor="middle" fill="${QUIET_LABEL}" ` +
     `font-family="monospace">${escapeXml(mainText)}</text>`
   );
+}
+
+/** Draw each character of `text` along an arc, rotated tangent to the circle.
+ *  SVG y-down convention: bottom-of-circle is angle 90°. */
+function svgCurvedText(
+  text: string,
+  cx_svg: number,
+  cy_svg: number,
+  radius_mm: number,
+  fontSize_mm: number,
+  maxArc_deg: number,
+): string {
+  if (text.length === 0) return "";
+  const charWidth_mm = fontSize_mm * 0.6;
+  const arc_mm = text.length * charWidth_mm;
+  const totalArc_rad = Math.min(arc_mm / radius_mm, (maxArc_deg * Math.PI) / 180);
+  const halfArc_rad = totalArc_rad / 2;
+
+  // SVG y-down: bottom of circle = 90°. Text reads left-to-right from
+  // (90° + halfArc) to (90° − halfArc), i.e. sweeping CW.
+  const startAngle_rad = Math.PI / 2 + halfArc_rad;
+  const angleStep_rad = text.length > 1 ? -(totalArc_rad / (text.length - 1)) : 0;
+
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const alpha = startAngle_rad + i * angleStep_rad;
+    const px = cx_svg + radius_mm * Math.cos(alpha);
+    const py = cy_svg + radius_mm * Math.sin(alpha);
+    // Tangent direction for left-to-right reading along the bottom arc.
+    const rotDeg = (alpha - Math.PI / 2) * (180 / Math.PI);
+    out +=
+      `<text x="${px}" y="${py}" font-size="${fontSize_mm}" text-anchor="middle" ` +
+      `fill="${QUIET_LABEL}" font-family="monospace" ` +
+      `transform="rotate(${rotDeg}, ${px}, ${py})">${escapeXml(text[i]!)}</text>`;
+  }
+  return out;
+}
+
+function renderCircularQuietZoneLabel(
+  plan: LayoutPlan,
+  x_mm: number,
+  y_mm: number,
+  tile_mm: number,
+  family: string,
+  id: number,
+  subtag: TagSpec | undefined,
+  flipY: (y_mm: number) => number,
+): string {
+  const Q = plan.options.quietZone_mm;
+  const cutRadius = plan.cutCircles[0]?.radius_mm ?? tile_mm / 2 + Q;
+  const cx_svg = x_mm + tile_mm / 2;
+  const cy_svg = flipY(y_mm + tile_mm / 2);
+
+  const mainText = tagCaptionLine(family, id, plan.tagSize_mm);
+  const subText = svgSubtagChainLabel(subtag, plan.subtagLevels);
+  const maxArc_deg = 120;
+
+  if (subText) {
+    const textRadiusOuter = cutRadius - Q * 0.3;
+    const textRadiusInner = cutRadius - Q * 0.8;
+    const maxFontH_mm = Q * 0.35;
+    let out = "";
+    for (const [text, radius] of [[mainText, textRadiusOuter], [subText, textRadiusInner]] as const) {
+      const maxFontArc_mm = (radius * maxArc_deg * Math.PI) / 180 / (text.length * 0.6);
+      const fontSize = Math.max(0.18, Math.min(maxFontH_mm, maxFontArc_mm));
+      out += svgCurvedText(text, cx_svg, cy_svg, radius, fontSize, maxArc_deg);
+    }
+    return out;
+  }
+
+  const textRadius = cutRadius - Q * 0.5;
+  const maxFontH_mm = Q * 0.7;
+  const maxFontArc_mm = (textRadius * maxArc_deg * Math.PI) / 180 / (mainText.length * 0.6);
+  const fontSize = Math.max(0.18, Math.min(maxFontH_mm, maxFontArc_mm));
+  return svgCurvedText(mainText, cx_svg, cy_svg, textRadius, fontSize, maxArc_deg);
 }
 
 function svgSubtagChainLabel(subtag: TagSpec | undefined, levels: SubtagLevel[]): string {
