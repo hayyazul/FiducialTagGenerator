@@ -48,8 +48,9 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 
 | File | Role |
 |------|------|
-| `index.html` | Single-page HTML shell with all CSS inlined; mounts `#app` and loads `src/main.ts` as the Vite entry point. |
-| `package.json` | NPM manifest: `pdf-lib` runtime dependency; Vite, Vitest, TypeScript, and ESLint as dev dependencies. |
+| `index.html` | Single-page HTML shell with full SEO meta (title, description, OG, Twitter, JSON-LD `SoftwareApplication`), favicon link, all CSS inlined, static `<header>` (h1 + tagline), `<main id="app">` mount point, and a static `<footer>` carrying explainer copy / supported-families list / author bio / related-links (all crawlable without JS). |
+| `package.json` | NPM manifest: `pdf-lib` runtime dependency; Vite, Vitest, TypeScript, and ESLint as dev dependencies. Carries SEO/repo metadata (description, keywords, homepage, author, repository). |
+| `README.md` | User-facing project description with features and USPs, plus developer Develop/Run/Deploy sections; also feeds GitHub-repo-page SEO. |
 | `tsconfig.json` | TypeScript config: ES2022 target, strict mode, bundler module resolution, no emit. |
 | `vite.config.ts` | Vite + Vitest config: GitHub Pages base path and Node test environment. |
 | `eslint.config.js` | Flat ESLint config: recommended JS + typescript-eslint rules. |
@@ -76,6 +77,10 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 | `public/resources/tagCustom48h12_mosaic.png` | Mosaic PNG for tagCustom48h12 (42211 tags, 10×10 px tiles). |
 | `public/resources/tagCircle21h7_mosaic.png` | Mosaic PNG for tagCircle21h7 (38 tags, 9×9 px tiles). |
 | `public/resources/tagCircle49h12_mosaic.png` | Mosaic PNG for tagCircle49h12 (65535 tags, 11×11 px tiles). |
+| `public/robots.txt` | Allows all crawlers and points to the sitemap. |
+| `public/sitemap.xml` | Single-URL sitemap for the site root; hand-maintained `lastmod`. |
+| `public/favicon.svg` | Inline SVG mark suggesting an AprilTag bit-grid, used as the browser tab favicon. |
+| `public/google60c6fb9354e060e4.html` | Google Search Console site-verification file. |
 
 ### Documentation (`docs/`)
 

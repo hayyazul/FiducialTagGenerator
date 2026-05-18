@@ -753,7 +753,6 @@ function bootstrap(): void {
   const familyOptions = buildFamilyOptionsMarkup();
   app.innerHTML = `
     <div class="form-pane">
-        <h1>AprilTag PDF Generator</h1>
         <form id="form">
           <fieldset>
             <legend>Tags</legend>

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://hayyazul.github.io/AprilTagPDFGenerator/sitemap.xml
