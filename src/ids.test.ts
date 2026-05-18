@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTagIdSpec } from "./ids";
+import { formatIdSpec, parseTagIdSpec } from "./ids";
 
 describe("parseTagIdSpec", () => {
   it("parses a single id", () => {
@@ -53,5 +53,28 @@ describe("parseTagIdSpec", () => {
 
   it("rejects an absurdly large range", () => {
     expect(() => parseTagIdSpec("0-99999999")).toThrow(/too many/i);
+  });
+});
+
+describe("formatIdSpec", () => {
+  it("returns empty for empty array", () => {
+    expect(formatIdSpec([])).toBe("");
+  });
+
+  it("formats a single id", () => {
+    expect(formatIdSpec([7])).toBe("7");
+  });
+
+  it("compresses a contiguous range", () => {
+    expect(formatIdSpec([3, 4, 5, 6])).toBe("3-6");
+  });
+
+  it("mixes singles and ranges", () => {
+    expect(formatIdSpec([0, 5, 6, 10, 11, 12, 13])).toBe("0, 5-6, 10-13");
+  });
+
+  it("round-trips through parseTagIdSpec", () => {
+    const original = "1-4, 7, 8-9";
+    expect(formatIdSpec(parseTagIdSpec(original))).toBe("1-4, 7-9");
   });
 });

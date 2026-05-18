@@ -55,3 +55,23 @@ function expandToken(token: string): number[] {
   }
   throw new Error(`Couldn't read "${token}" — use whole numbers and ranges like 0-9.`);
 }
+
+/** Inverse of `parseTagIdSpec`: turn sorted unique IDs into a compressed string
+ *  like "0, 5-6, 10-13". Assumes ids are sorted ascending with no repeats. */
+export function formatIdSpec(ids: number[]): string {
+  if (ids.length === 0) return "";
+  const parts: string[] = [];
+  let start = ids[0]!;
+  let end = ids[0]!;
+  for (let i = 1; i < ids.length; i++) {
+    if (ids[i] === end + 1) {
+      end = ids[i]!;
+    } else {
+      parts.push(start === end ? `${start}` : `${start}-${end}`);
+      start = ids[i]!;
+      end = ids[i]!;
+    }
+  }
+  parts.push(start === end ? `${start}` : `${start}-${end}`);
+  return parts.join(", ");
+}

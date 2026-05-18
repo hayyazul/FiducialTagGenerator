@@ -61,7 +61,7 @@ function buildSquareFamilyOptionsMarkup(): string {
 const MAX_SUBTAG_DEPTH = 2;
 
 import { type FamilyBitmaps, loadFamily } from "./families/load";
-import { parseTagIdSpec } from "./ids";
+import { formatIdSpec, parseTagIdSpec } from "./ids";
 import { planSmallTagLayout, type CutShape } from "./layout/plan";
 import type { LayoutOptions, LayoutPlan, Paper, SubtagLevel, TagSpec } from "./layout/types";
 import { renderPlanToSvg } from "./preview/svg";
@@ -534,13 +534,15 @@ function syncSubtagChain(): void {
   const container = document.getElementById("subtag-chain");
   if (!container) return;
 
+  const ancestorFamilies = new Set<string>();
+  ancestorFamilies.add(field("family").value);
+
   let depth = 0;
   let parentFamilyName = field("family").value;
   let parentDef = getFamily(parentFamilyName);
 
   while (depth < MAX_SUBTAG_DEPTH) {
     if (!parentDef || !isRecursiveFamily(parentDef)) {
-      // Remove this depth and all deeper ones.
       removeSubtagLevelsFrom(container, depth);
       return;
     }
@@ -559,21 +561,28 @@ function syncSubtagChain(): void {
     if (inheritBox && subIdsInput) {
       subIdsInput.disabled = inheritBox.checked;
       if (inheritBox.checked) {
-        if (subDef && isRecursiveFamily(subDef)) {
-          subIdsInput.value = "auto (unique per tag)";
-          subIdsInput.style.color = "#999";
-        } else {
-          const parentIds = depth === 0
-            ? field("ids").value
-            : (document.getElementById(`subIds-${depth - 1}`) as HTMLInputElement | null)?.value ?? "";
-          subIdsInput.value = parentIds;
-          subIdsInput.style.color = "#999";
+        const parentSpec = depth === 0
+          ? field("ids").value
+          : (document.getElementById(`subIds-${depth - 1}`) as HTMLInputElement | null)?.value ?? "";
+        let parentIds: number[];
+        try {
+          parentIds = parseTagIdSpec(parentSpec);
+        } catch {
+          parentIds = [];
         }
+        if (ancestorFamilies.has(subFamilyName)) {
+          const assigned = assignDissimilarIds(parentIds, subDef?.validTagCount ?? 0);
+          subIdsInput.value = formatIdSpec(assigned);
+        } else {
+          subIdsInput.value = parentSpec;
+        }
+        subIdsInput.style.color = "#999";
       } else {
         subIdsInput.style.color = "";
       }
     }
 
+    ancestorFamilies.add(subFamilyName);
     parentFamilyName = subFamilyName;
     parentDef = subDef;
     depth++;
@@ -644,6 +653,7 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
 
   const levels: SubtagLevel[] = [];
   const idChains: number[][] = [];
+  const ancestorFamilies = new Set<string>([parentFamilyName]);
   let allLoaded = true;
 
   while (depth < MAX_SUBTAG_DEPTH && curDef && isRecursiveFamily(curDef)) {
@@ -659,7 +669,7 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
 
     let subIds: number[];
     if (inheriting) {
-      if (isRecursiveFamily(subDef)) {
+      if (ancestorFamilies.has(subFamilyName)) {
         subIds = assignDissimilarIds(curIds, subDef.validTagCount);
         if (subIds.length < curIds.length) {
           setFieldError(`subIds-${depth}`,
@@ -682,17 +692,18 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
           `Must have exactly ${curIds.length} IDs to match the ${depth === 0 ? "outer" : "level " + depth} tag count.`);
         return null;
       }
-      if (isRecursiveFamily(subDef)) {
+      if (ancestorFamilies.has(subFamilyName)) {
         const parentSet = new Set(curIds);
         const overlap = subIds.find((id) => parentSet.has(id));
         if (overlap !== undefined) {
           setFieldError(`subIds-${depth}`,
-            `Sub-tag IDs must differ from parent IDs when nesting recursive families. ` +
+            `Sub-tag IDs must differ from parent IDs when the same family is nested. ` +
             `ID ${overlap} appears in both levels.`);
           return null;
         }
       }
     }
+    ancestorFamilies.add(subFamilyName);
 
     const maxSubId = subIds.reduce((m, x) => Math.max(m, x), 0);
     if (maxSubId >= subDef.validTagCount) {
