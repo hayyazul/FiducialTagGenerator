@@ -11,11 +11,18 @@
  * Drawing order matters — later elements paint on top of earlier ones:
  *   1. Page background (white).
  *   2. Registration corner marks.
- *   3. Per-placement: marker (or placeholder), recursive sub-tags,
- *      optional quiet-zone caption.
- *   4. Cut lines / cut circles.
- * The cut lines paint *over* the markers, matching the existing PDF
- * and SVG renderers exactly so the cut sits in front of the artwork.
+ *   3. All markers (with recursive sub-tags).
+ *   4. All quiet-zone captions.
+ *   5. Cut lines / cut circles.
+ * Captions are deliberately a separate pass *after* every marker, not
+ * interleaved with the placement that owns them. Without that
+ * separation, dense hex-packed circle families produce a neighbour's
+ * tile corner overhanging this tag's quiet zone, and the neighbour's
+ * rasterised `<image>` (opaque white in unprinted cells) paints over
+ * the curved caption emitted moments earlier. Markers-then-captions
+ * keeps every caption on top of every marker regardless of spatial
+ * overlap. The PDF renderer is immune to this in vector mode (no
+ * opaque white fill), but the same ordering is harmless for it.
  */
 import { type BitsProvider, getFamily } from "../families";
 import type { LayoutPlan, SubtagLevel, TagSpec } from "../layout/types";
@@ -55,7 +62,11 @@ export function composePage(
   for (const p of plan.placements) {
     if (p.page !== pageIndex) continue;
     drawMarkerAt(canvas, markers, p.tag, p.x_mm, p.y_mm, plan.tileSize_mm);
-    if (opts.printLabelsInQuietZone) {
+  }
+
+  if (opts.printLabelsInQuietZone) {
+    for (const p of plan.placements) {
+      if (p.page !== pageIndex) continue;
       drawQuietZoneCaption(canvas, plan, p.tag, p.x_mm, p.y_mm);
     }
   }
