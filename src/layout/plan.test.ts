@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maxTagSizeForCount, planSmallTagLayout } from "./plan";
+import { maxTagSizeForCount, planSmallTagLayout, type CutShape } from "./plan";
 import type { LayoutOptions, Paper, TagSpec } from "./types";
 
 const A4: Paper = { width_mm: 210, height_mm: 297 };
@@ -123,6 +123,75 @@ describe("planSmallTagLayout — cut segments", () => {
   });
 });
 
+describe("planSmallTagLayout — circle cut shape", () => {
+  const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+
+  it("uses 2*(outerRadius+quiet) as the cell width and pitch for circle cells", () => {
+    const opts: LayoutOptions = { ...noMargins, quietZone_mm: 2, cutMargin_mm: 1 };
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 1), 20, square100, opts, 20, circleShape,
+    );
+    // cell = 2*(10 + 2) = 24, pitch = 24 + 1 = 25. Tile origin at quietZone=2.
+    expect(plan.placements).toHaveLength(1);
+    expect(plan.placements[0]!.x_mm).toBeCloseTo(2, 6);
+    expect(plan.cutSegments).toEqual([]);
+    expect(plan.cutCircles).toHaveLength(1);
+  });
+
+  it("emits one CutCircle per placement at the tile centre with correct radius", () => {
+    const opts: LayoutOptions = { ...noMargins, quietZone_mm: 2, cutMargin_mm: 1 };
+    const tileSize = 20;
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 4), tileSize, square100, opts, tileSize, circleShape,
+    );
+    expect(plan.cutCircles).toHaveLength(4);
+    for (let i = 0; i < 4; i++) {
+      const p = plan.placements[i]!;
+      const c = plan.cutCircles[i]!;
+      expect(c.page).toBe(p.page);
+      expect(c.cx_mm).toBeCloseTo(p.x_mm + tileSize / 2, 6);
+      expect(c.cy_mm).toBeCloseTo(p.y_mm + tileSize / 2, 6);
+      expect(c.radius_mm).toBeCloseTo(10 + 2, 6); // outerRadius + quietZone
+    }
+  });
+
+  it("sets cutSegments empty for circle plans", () => {
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 6), 20, square100, noMargins, 20, circleShape,
+    );
+    expect(plan.cutSegments).toEqual([]);
+  });
+
+  it("rejects a circle that does not fit on the paper", () => {
+    // 100 mm paper, 5 mm pageMargin per side → 90 mm printable.
+    // circle cell = 2*(55 + 0) = 110 > 90 → error.
+    const bigCircle: CutShape = { kind: "circle", outerRadius_mm: 55 };
+    const opts: LayoutOptions = { ...noMargins, pageMargin_mm: 5 };
+    expect(() =>
+      planSmallTagLayout([], 50, square100, opts, 50, bigCircle),
+    ).toThrow(/does not fit/);
+  });
+
+  it("returns an empty plan with empty cutCircles for an empty tag list", () => {
+    const plan = planSmallTagLayout([], 20, square100, noMargins, 20, circleShape);
+    expect(plan.pageCount).toBe(0);
+    expect(plan.cutCircles).toEqual([]);
+    expect(plan.cutSegments).toEqual([]);
+  });
+
+  it("places circle cells across pages", () => {
+    // cell = 2*(20+0) = 40 mm; 100×190 mm paper, zero margins → 2 cols × 4 rows
+    // = 8 per page; 30 tags → 4 pages.
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 30), 20, { width_mm: 100, height_mm: 190 },
+      noMargins, 20, { kind: "circle", outerRadius_mm: 20 },
+    );
+    expect(plan.pageCount).toBe(4);
+    const onPage1 = plan.cutCircles.filter((c) => c.page === 1);
+    expect(onPage1.length).toBe(8);
+  });
+});
+
 describe("planSmallTagLayout — input validation (fail loudly)", () => {
   it("rejects non-positive tile size", () => {
     expect(() => planSmallTagLayout([], 0, square100, noMargins)).toThrow(/tileSize_mm/);
@@ -172,5 +241,15 @@ describe("maxTagSizeForCount", () => {
     // Sanity: 20 tags of that size really do fit.
     expect(() => planSmallTagLayout(makeTags("tag36h11", 20), size - 0.01, A4, opts))
       .not.toThrow();
+  });
+
+  it("handles circular cut shape: monotone and finds a positive size", () => {
+    const opts: LayoutOptions = { pageMargin_mm: 10, quietZone_mm: 2, cutMargin_mm: 1 };
+    const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
+    const size = maxTagSizeForCount(20, A4, opts, 1, circleShape);
+    expect(size).toBeGreaterThan(0);
+    expect(() =>
+      planSmallTagLayout(makeTags("tagCircle21h7", 20), size - 0.01, A4, opts, size - 0.01, circleShape),
+    ).not.toThrow();
   });
 });

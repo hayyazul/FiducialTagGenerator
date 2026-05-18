@@ -1,4 +1,5 @@
 import type {
+  CutCircle,
   CutSegment,
   LayoutOptions,
   LayoutPlan,
@@ -11,33 +12,58 @@ function require_(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-/** Cell geometry under the current `cutMargin_mm` semantic:
- *   - `cellWidth_mm` is the printed cell containing the tile + its quiet
- *     zone on every side. The cut lines run at the cell boundary, so the
- *     cell is what survives a clean trim.
- *   - `pitch_mm` is the centre-to-centre stride between adjacent cells:
- *     `cellWidth_mm + cutMargin_mm`. At `cutMargin_mm = 0`, adjacent cells
- *     share a single boundary line; at `> 0`, the boundary is a paper gap
- *     with one cut on each side. */
-function cellWidth_mm(tileSize_mm: number, options: LayoutOptions): number {
+/** The cut shape determines how each cell's boundary is drawn on the page.
+ *  Square families get line-cut grids; Circle families get one circular cut
+ *  per placement. */
+export type CutShape =
+  | { kind: "square" }
+  | { kind: "circle"; outerRadius_mm: number };
+
+/**
+ * Cell geometry helpers. For a square family the cell width is
+ * `tileSize + 2·quietZone` and the cut follows the cell boundary. For a
+ * circle family the cell is the smallest axis-aligned square that contains
+ * the circular cut — `2·(outerRadius + quietZone)` — so the pitch stays
+ * `cellWidth + cutMargin` in both cases and the page grid is uniform.
+ */
+function cellWidth_mm(
+  tileSize_mm: number,
+  options: LayoutOptions,
+  cutShape: CutShape,
+): number {
+  if (cutShape.kind === "circle") {
+    return 2 * (cutShape.outerRadius_mm + options.quietZone_mm);
+  }
   return tileSize_mm + 2 * options.quietZone_mm;
 }
 
-function pitch_mm(tileSize_mm: number, options: LayoutOptions): number {
-  return cellWidth_mm(tileSize_mm, options) + options.cutMargin_mm;
+function pitch_mm(
+  tileSize_mm: number,
+  options: LayoutOptions,
+  cutShape: CutShape,
+): number {
+  return cellWidth_mm(tileSize_mm, options, cutShape) + options.cutMargin_mm;
 }
 
-/** Largest N such that `N · cellWidth + (N − 1) · cutMargin ≤ printable`.
- *  Rearranges to `N ≤ (printable + cutMargin) / pitch` and floors. Returns 0
- *  when not even one cell fits. */
-function tagsPerAxis(printable_mm: number, tileSize_mm: number, options: LayoutOptions): number {
-  const cell = cellWidth_mm(tileSize_mm, options);
+/** Largest N such that `N · cellWidth + (N − 1) · cutMargin ≤ printable`. */
+function tagsPerAxis(
+  printable_mm: number,
+  tileSize_mm: number,
+  options: LayoutOptions,
+  cutShape: CutShape,
+): number {
+  const cell = cellWidth_mm(tileSize_mm, options, cutShape);
   if (printable_mm < cell) return 0;
-  const pitch = pitch_mm(tileSize_mm, options);
+  const pitch = pitch_mm(tileSize_mm, options, cutShape);
   return Math.floor((printable_mm + options.cutMargin_mm) / pitch);
 }
 
-function validateInputs(tileSize_mm: number, paper: Paper, options: LayoutOptions): void {
+function validateInputs(
+  tileSize_mm: number,
+  paper: Paper,
+  options: LayoutOptions,
+  cutShape: CutShape,
+): void {
   require_(tileSize_mm > 0, `tileSize_mm must be positive (got ${tileSize_mm})`);
   require_(
     paper.width_mm > 0 && paper.height_mm > 0,
@@ -46,8 +72,14 @@ function validateInputs(tileSize_mm: number, paper: Paper, options: LayoutOption
   for (const k of ["pageMargin_mm", "quietZone_mm", "cutMargin_mm"] as const) {
     require_(options[k] >= 0, `options.${k} must be non-negative (got ${options[k]})`);
   }
+  if (cutShape.kind === "circle") {
+    require_(
+      cutShape.outerRadius_mm >= 0,
+      `outerRadius_mm must be non-negative (got ${cutShape.outerRadius_mm})`,
+    );
+  }
   const minSide_mm = Math.min(paper.width_mm, paper.height_mm);
-  const required_mm = cellWidth_mm(tileSize_mm, options) + 2 * options.pageMargin_mm;
+  const required_mm = cellWidth_mm(tileSize_mm, options, cutShape) + 2 * options.pageMargin_mm;
   require_(
     required_mm <= minSide_mm + 1e-9,
     `tag does not fit on paper: cell + page margins is ${required_mm.toFixed(2)}mm, ` +
@@ -60,10 +92,13 @@ function validateInputs(tileSize_mm: number, paper: Paper, options: LayoutOption
  * Lay out `tags` onto pages of `paper` with the given margins.
  *
  * `tileSize_mm` is the printed dimension of each tag's tile (the bitmap
- * pulled from the mosaic, including any white ring). `tagSize_mm` is the
- * AprilTag-spec tag size — between detection corners — used only for the
- * size shown in labels; defaults to `tileSize_mm` so existing call sites
- * that don't separate the two keep working.
+ * pulled from the mosaic, including any white ring). For circle families the
+ * tile is square; the circular cut and its enclosing cell are derived from
+ * `cutShape.outerRadius_mm + quietZone_mm`.
+ *
+ * `tagSize_mm` is the AprilTag-spec tag size between detection corners; used
+ * only for labels. Defaults to `tileSize_mm` so existing callers that don't
+ * separate the two keep working.
  */
 export function planSmallTagLayout(
   tags: readonly TagSpec[],
@@ -71,18 +106,19 @@ export function planSmallTagLayout(
   paper: Paper,
   options: LayoutOptions,
   tagSize_mm: number = tileSize_mm,
+  cutShape: CutShape = { kind: "square" },
 ): LayoutPlan {
-  validateInputs(tileSize_mm, paper, options);
+  validateInputs(tileSize_mm, paper, options, cutShape);
 
   const printable_x_mm = paper.width_mm - 2 * options.pageMargin_mm;
   const printable_y_mm = paper.height_mm - 2 * options.pageMargin_mm;
-  const cols = tagsPerAxis(printable_x_mm, tileSize_mm, options);
-  const rows = tagsPerAxis(printable_y_mm, tileSize_mm, options);
+  const cols = tagsPerAxis(printable_x_mm, tileSize_mm, options, cutShape);
+  const rows = tagsPerAxis(printable_y_mm, tileSize_mm, options, cutShape);
   require_(cols >= 1 && rows >= 1, "no tags fit in printable area");
 
   const perPage = cols * rows;
-  const cell = cellWidth_mm(tileSize_mm, options);
-  const pitch = pitch_mm(tileSize_mm, options);
+  const cell = cellWidth_mm(tileSize_mm, options, cutShape);
+  const pitch = pitch_mm(tileSize_mm, options, cutShape);
   // Block bounds: N cells with (N−1) cutMargin gaps between them.
   const block_w_mm = cols * cell + (cols - 1) * options.cutMargin_mm;
   const block_h_mm = rows * cell + (rows - 1) * options.cutMargin_mm;
@@ -107,19 +143,44 @@ export function planSmallTagLayout(
     };
   });
 
-  const cutSegments = computeCutSegments(
-    pageCount,
-    cols,
-    rows,
-    block_x0_mm,
-    block_y0_mm,
-    block_w_mm,
-    block_h_mm,
-    cell,
-    pitch,
-  );
+  const cutSegments =
+    cutShape.kind === "square"
+      ? computeCutSegments(
+          pageCount,
+          cols,
+          rows,
+          block_x0_mm,
+          block_y0_mm,
+          block_w_mm,
+          block_h_mm,
+          cell,
+          pitch,
+        )
+      : [];
 
-  return { paper, options, tileSize_mm, tagSize_mm, pageCount, placements, cutSegments };
+  const cutCircles =
+    cutShape.kind === "circle"
+      ? computeCutCircles(placements, tileSize_mm, cutShape, options)
+      : [];
+
+  return { paper, options, tileSize_mm, tagSize_mm, pageCount, placements, cutSegments, cutCircles };
+}
+
+/** One CutCircle per placement: centre at the tile centre, radius from the
+ *  outer edge of the quiet zone. */
+function computeCutCircles(
+  placements: readonly Placement[],
+  tileSize_mm: number,
+  cutShape: { kind: "circle"; outerRadius_mm: number },
+  options: LayoutOptions,
+): CutCircle[] {
+  const radius = cutShape.outerRadius_mm + options.quietZone_mm;
+  return placements.map((p) => ({
+    page: p.page,
+    cx_mm: p.x_mm + tileSize_mm / 2,
+    cy_mm: p.y_mm + tileSize_mm / 2,
+    radius_mm: radius,
+  }));
 }
 
 /** Emit a cut grid spanning the block. Each cell contributes a left and a
@@ -202,18 +263,28 @@ export function maxTagSizeForCount(
   paper: Paper,
   options: LayoutOptions,
   maxPages: number,
+  cutShape: CutShape = { kind: "square" },
 ): number {
   require_(count > 0, `count must be positive (got ${count})`);
   require_(maxPages >= 1, `maxPages must be at least 1 (got ${maxPages})`);
   for (const k of ["pageMargin_mm", "quietZone_mm", "cutMargin_mm"] as const) {
     require_(options[k] >= 0, `options.${k} must be non-negative (got ${options[k]})`);
   }
+  if (cutShape.kind === "circle") {
+    require_(
+      cutShape.outerRadius_mm >= 0,
+      `outerRadius_mm must be non-negative (got ${cutShape.outerRadius_mm})`,
+    );
+  }
 
   const printable_x = paper.width_mm - 2 * options.pageMargin_mm;
   const printable_y = paper.height_mm - 2 * options.pageMargin_mm;
   if (printable_x <= 0 || printable_y <= 0) return 0;
 
-  const fixedOverhead = 2 * options.quietZone_mm;
+  const fixedOverhead =
+    cutShape.kind === "circle"
+      ? 2 * cutShape.outerRadius_mm + 2 * options.quietZone_mm
+      : 2 * options.quietZone_mm;
   const upper = Math.min(printable_x, printable_y) - fixedOverhead;
   if (upper <= 0) return 0;
 
@@ -221,8 +292,8 @@ export function maxTagSizeForCount(
   let hi = upper;
   for (let i = 0; i < 64; i++) {
     const mid = (lo + hi) / 2;
-    const cols = tagsPerAxis(printable_x, mid, options);
-    const rows = tagsPerAxis(printable_y, mid, options);
+    const cols = tagsPerAxis(printable_x, mid, options, cutShape);
+    const rows = tagsPerAxis(printable_y, mid, options, cutShape);
     const fits = cols >= 1 && rows >= 1 && cols * rows * maxPages >= count;
     if (fits) lo = mid;
     else hi = mid;

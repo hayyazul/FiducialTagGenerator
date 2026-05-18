@@ -62,6 +62,15 @@ export interface CutSegment {
   y1_mm: number;
 }
 
+/** A circular cut around a single tag, in page-space mm. Used by the
+ *  Circle-family layout; empty for square plans. */
+export interface CutCircle {
+  page: number;
+  cx_mm: number;
+  cy_mm: number;
+  radius_mm: number;
+}
+
 export interface LayoutPlan {
   paper: Paper;
   options: LayoutOptions;
@@ -81,4 +90,6 @@ export interface LayoutPlan {
   pageCount: number;
   placements: Placement[];
   cutSegments: CutSegment[];
+  /** Empty for square plans; one entry per placement for circle plans. */
+  cutCircles: CutCircle[];
 }
