@@ -114,19 +114,19 @@
   </head>
   <body>
     <header class="site-header">
-      <h1>AprilTag &amp; ArUco Generator</h1>
-      <p class="tagline">Print AprilTag and ArUco markers as PDFs — free, open, browser-based, with built-in support for recursive nested tags.</p>
+      <h1>ArUco and AprilTag Generator</h1>
+      <p class="tagline">Generate ready-to-print AprilTags and ArUco markers as PDFs. Free, opensource, browser-based, with built-in support for recursive nested tags.</p>
     </header>
     <main id="app"></main>
     <footer class="site-footer">
       <h2>About this generator</h2>
-      <p>A free, open-source web tool for generating printable PDFs of AprilTag and ArUco fiducial markers. Pick a family, choose a tag ID range and a physical size, and the tool packs as many tags as fit per page — with quiet zones and cut margins computed correctly. Everything runs in your browser; nothing is uploaded.</p>
+      <p>This is a simple web tool to generate PDFs of AprilTag and ArUco fiducial markers. Pick a family, the desired size, and tag IDs, and the tool packs as many tags as fit per page — with quiet zones and cut margins computed correctly. Everything runs in your browser. You can also download the github repository to run it offline.</p>
 
       <h2>What are AprilTags?</h2>
       <p>AprilTags are 2D visual fiducial markers developed at the University of Michigan&rsquo;s APRIL Lab, widely used in robotics, drones, augmented reality, and computer vision research for pose estimation and object identification. The detector is open source and the bitmap encodings are published. This tool uses the official tag bitmaps from <a href="https://github.com/AprilRobotics/apriltag-imgs" rel="noopener">apriltag-imgs</a>; the detector itself lives in <a href="https://april.eecs.umich.edu/software/apriltag" rel="noopener">AprilRobotics&rsquo; apriltag library</a>.</p>
 
       <h2>What are ArUco markers?</h2>
-      <p>ArUco is another popular family of fiducial markers, originally developed at the Universidad de Córdoba and shipped with OpenCV&rsquo;s <code>aruco</code> module. They differ from AprilTags in their bit layout and Hamming distances, but serve the same role: cheap, reliable, camera-pose targets. If your toolchain is OpenCV-based, ArUco is often the natural pick. See the <a href="https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html" rel="noopener">OpenCV ArUco detection tutorial</a>.</p>
+      <p>ArUco is another popular family of 2D fiducial markers, originally developed at the Universidad de Córdoba and shipped with OpenCV&rsquo;s <code>aruco</code> module. They differ from AprilTags in their bit layout and Hamming distances, but are similar in role. If your toolchain is OpenCV-based, ArUco is often the natural pick. See the <a href="https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html" rel="noopener">OpenCV ArUco detection tutorial</a>.</p>
 
       <h2>Supported tag families</h2>
       <ul>
@@ -135,13 +135,13 @@
       </ul>
 
       <h2>Recursive nested tags</h2>
-      <p>A feature no other public generator surveyed offers: you can nest a smaller tag inside another tag&rsquo;s center region. The tool computes the inner tag&rsquo;s size and quiet zone automatically and renders both as a single printable. Useful for multi-scale detection (close-range cameras read the small inner tag; long-range cameras read the outer tag) and for marking robotics hardware without needing two physical labels. Currently supported on the <code>tagCustom48h12</code> AprilTag family and on ArUco families with a sufficiently large center region.</p>
+      <p>You can nest a smaller tag inside another tag&rsquo;s center region. The tool computes the inner tag&rsquo;s size and quiet zone automatically and renders both as a single printable PDF. Useful for multi-scale detection (close-range cameras read the small inner tag; long-range cameras read the outer tag) and for increasing detection accuracy as a whole. Currently supported on the <code>tagCustom48h12</code> AprilTag family and on ArUco families with a sufficiently large center region.</p>
 
       <h2>Limelight, FRC, and printing notes</h2>
       <p>The PDF output is print-ready at the physical size you specify. Set your printer&rsquo;s <em>Page Scaling</em> to <em>None</em> (sometimes called &ldquo;Actual Size&rdquo; or 100%) so the printed tags match the requested millimeter dimensions. For FRC (FIRST Robotics) competitions, <code>tag36h11</code> at competition-spec sizes is supported.</p>
 
       <h2>About the author</h2>
-      <p class="author-bio">Built by Ayyaz Hassan, CS at UIUC and member of SIGRobotics@UIUC.</p>
+      <p class="author-bio">Built by Ayyazul Hassan, CS at UIUC and member of SIGRobotics@UIUC.</p>
       <p class="author-bio">GitHub: <a href="https://github.com/hayyazul" rel="noopener">github.com/hayyazul</a> &middot; Personal site: <em>coming soon</em></p>
 
       <h2>Related links</h2>
@@ -152,7 +152,7 @@
         <li><a href="https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html" rel="noopener">OpenCV ArUco tutorial</a></li>
       </ul>
 
-      <p class="meta-row">Open source. No tracking, no ads, no uploads — your tag IDs never leave your browser.</p>
+      <p class="meta-row">Open source. This tool runs entirely in your browser, so nothing leaves your computer.</p>
     </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
