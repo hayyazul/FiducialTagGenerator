@@ -131,11 +131,34 @@ describe("planSmallTagLayout — circle cut shape", () => {
     const plan = planSmallTagLayout(
       makeTags("tagCircle21h7", 1), 20, square100, opts, 20, circleShape,
     );
-    // cell = 2*(10 + 2) = 24, pitch = 24 + 1 = 25. Tile origin at quietZone=2.
+    // cell = 2*(10 + 2) = 24, pitch = 24 + 1 = 25.
+    // tileOffset = (24 - 20)/2 = 2 (happens to equal quietZone here).
     expect(plan.placements).toHaveLength(1);
     expect(plan.placements[0]!.x_mm).toBeCloseTo(2, 6);
     expect(plan.cutSegments).toEqual([]);
     expect(plan.cutCircles).toHaveLength(1);
+  });
+
+  it("centers the tile within the cell when outerRadius differs from tileSize/2", () => {
+    // outerRadius=15, quietZone=2, tileSize=20 → cell = 2*(15+2) = 34.
+    // tileOffset = (34 - 20)/2 = 7 (not quietZone=2).
+    const shape: CutShape = { kind: "circle", outerRadius_mm: 15 };
+    const opts: LayoutOptions = { ...noMargins, quietZone_mm: 2 };
+    const plan = planSmallTagLayout(
+      makeTags("tagCircle21h7", 1), 20, square100, opts, 20, shape,
+    );
+    expect(plan.placements[0]!.x_mm).toBeCloseTo(7, 6);
+    // Cut circle centre matches tile centre.
+    expect(plan.cutCircles[0]!.cx_mm).toBeCloseTo(7 + 10, 6);
+    // Cut circle exactly touches cell edges.
+    expect(plan.cutCircles[0]!.cx_mm - plan.cutCircles[0]!.radius_mm).toBeCloseTo(0, 4);
+    expect(plan.cutCircles[0]!.cx_mm + plan.cutCircles[0]!.radius_mm).toBeCloseTo(34, 4);
+  });
+
+  it("keeps square family placement unchanged (tileOffset equals quietZone)", () => {
+    const opts: LayoutOptions = { ...noMargins, quietZone_mm: 3 };
+    const plan = planSmallTagLayout(makeTags("tag36h11", 1), 20, square100, opts);
+    expect(plan.placements[0]!.x_mm).toBeCloseTo(3, 6);
   });
 
   it("emits one CutCircle per placement at the tile centre with correct radius", () => {

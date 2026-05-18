@@ -108,17 +108,11 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     name: "tagCircle21h7",
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle21h7_mosaic.png`,
     tileSize_px: 9,
-    // Detection edge of the inner white-bordered square. The Circle families
-    // ship with `reversed_border` upstream, so the canonical detection
-    // outline is white, not black — auto-detection (see
-    // `scripts/measure-circle-geometry.py`) lists the candidates and the
-    // value below comes from the upstream apriltag spec.
     widthAtBorder_modules: 5,
-    // Radius of the smallest enclosing circle (in modules) across every
-    // valid tag, measured by the script. ≈ tileSize_px · √2 / 2 because the
-    // outer corner pixels of the tile are part of the family's decorative
-    // ring on all 38 tags.
-    outerRadius_modules: 6.363961,
+    // Smallest circle centered on the tile that encloses every *occupied*
+    // cell (7×7 inner block corners). Corner cells of the 9×9 tile are
+    // outside the circular tag shape.
+    outerRadius_modules: 4.949747,
     validTagCount: 38,
     group: "Circle",
     shape: "circle",
@@ -128,7 +122,7 @@ const FAMILIES: Record<string, TagFamilyDef> = {
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle49h12_mosaic.png`,
     tileSize_px: 11,
     widthAtBorder_modules: 5,
-    outerRadius_modules: 7.778175,
+    outerRadius_modules: 6.363961,
     validTagCount: 65535,
     group: "Circle",
     shape: "circle",
@@ -193,6 +187,48 @@ export function outerRadiusModulesFor(bits: ReadonlyArray<ReadonlyArray<boolean>
     }
   }
   return best;
+}
+
+/**
+ * Boolean mask of which cells in a circular tag's tile are occupied (inside
+ * the tag shape) vs unoccupied (outside, should render white). The pattern:
+ * a centered `(edge-2)×(edge-2)` inner block with 3-cell-wide cross arms on
+ * each side. The four corner L-shapes are unoccupied.
+ */
+export function circleOccupiedMask(edge: number): boolean[][] {
+  const innerSize = edge - 2;
+  const armWidth = 3;
+  const margin = (edge - innerSize) / 2; // always 1
+  const armStart = Math.floor((edge - armWidth) / 2);
+  const mask: boolean[][] = [];
+  for (let r = 0; r < edge; r++) {
+    const row: boolean[] = [];
+    for (let c = 0; c < edge; c++) {
+      const inInner =
+        r >= margin && r < margin + innerSize &&
+        c >= margin && c < margin + innerSize;
+      const inTopArm    = r === 0 && c >= armStart && c < armStart + armWidth;
+      const inBottomArm = r === edge - 1 && c >= armStart && c < armStart + armWidth;
+      const inLeftArm   = c === 0 && r >= armStart && r < armStart + armWidth;
+      const inRightArm  = c === edge - 1 && r >= armStart && r < armStart + armWidth;
+      row.push(inInner || inTopArm || inBottomArm || inLeftArm || inRightArm);
+    }
+    mask.push(row);
+  }
+  return mask;
+}
+
+/**
+ * For circle families, zero out cells outside the circular tag shape.
+ * For square families, return the grid unchanged.
+ */
+export function applyOccupiedMask(
+  bits: ReadonlyArray<ReadonlyArray<boolean>>,
+  family: TagFamilyDef,
+): boolean[][] {
+  if (family.shape !== "circle") return bits.map((row) => [...row]);
+  const mask = circleOccupiedMask(family.tileSize_px);
+  return bits.map((row, r) => row.map((val, c) => val && (mask[r]?.[c] ?? false)));
 }
 
 export function extractTagBits(

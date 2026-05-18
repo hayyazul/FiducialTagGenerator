@@ -71,13 +71,36 @@ def extract_tile(
     return out
 
 
+def circle_occupied_mask(edge: int) -> list[list[bool]]:
+    """Generate a boolean mask of occupied cells for a circle family tile.
+    Pattern: centered (edge-2)x(edge-2) inner block with 3-wide cross arms."""
+    inner_size = edge - 2
+    arm_width = 3
+    margin = (edge - inner_size) // 2
+    arm_start = (edge - arm_width) // 2
+    mask: list[list[bool]] = []
+    for r in range(edge):
+        row: list[bool] = []
+        for c in range(edge):
+            in_inner = margin <= r < margin + inner_size and margin <= c < margin + inner_size
+            in_top = r == 0 and arm_start <= c < arm_start + arm_width
+            in_bottom = r == edge - 1 and arm_start <= c < arm_start + arm_width
+            in_left = c == 0 and arm_start <= r < arm_start + arm_width
+            in_right = c == edge - 1 and arm_start <= r < arm_start + arm_width
+            row.append(in_inner or in_top or in_bottom or in_left or in_right)
+        mask.append(row)
+    return mask
+
+
 def outer_radius_modules(bits: list[list[bool]], edge: int) -> float:
+    """Radius of smallest circle enclosing every occupied black pixel."""
+    mask = circle_occupied_mask(edge)
     cx = (edge - 1) / 2
     cy = (edge - 1) / 2
     best = 0.0
     for row in range(edge):
         for col in range(edge):
-            if not bits[row][col]:
+            if not bits[row][col] or not mask[row][col]:
                 continue
             dx = abs(col - cx) + 0.5
             dy = abs(row - cy) + 0.5

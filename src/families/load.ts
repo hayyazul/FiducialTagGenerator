@@ -6,7 +6,7 @@
  * the pure registry/extractor in `./index.ts`.
  */
 
-import { extractTagBits, getFamily, mosaicGrid, type TagFamilyDef } from ".";
+import { applyOccupiedMask, extractTagBits, getFamily, mosaicGrid, type TagFamilyDef } from ".";
 
 export interface FamilyBitmaps {
   family: TagFamilyDef;
@@ -64,8 +64,9 @@ async function decode(family: TagFamilyDef): Promise<FamilyBitmaps> {
       const hit = bitsCache.get(id);
       if (hit) return hit;
       const b = extractTagBits(gray, W, H, family, id);
-      bitsCache.set(id, b);
-      return b;
+      const masked = applyOccupiedMask(b, family);
+      bitsCache.set(id, masked);
+      return masked;
     },
   };
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyOccupiedMask,
+  circleOccupiedMask,
   extractTagBits,
   mosaicGrid,
   outerRadiusModulesFor,
@@ -118,5 +120,87 @@ describe("extractTagBits", () => {
     const bits = extractTagBits(px, w, h, family, 0);
     expect(bits[0]).toEqual([true, true]);
     expect(bits[1]).toEqual([false, false]);
+  });
+});
+
+describe("circleOccupiedMask", () => {
+  it("generates a 9x9 mask with inner 7x7 block and 3-wide cross arms", () => {
+    const mask = circleOccupiedMask(9);
+    expect(mask).toHaveLength(9);
+    mask.forEach((row) => expect(row).toHaveLength(9));
+
+    // Corner L-shapes are unoccupied.
+    expect(mask[0]![0]).toBe(false);
+    expect(mask[0]![1]).toBe(false);
+    expect(mask[0]![2]).toBe(false);
+    expect(mask[1]![0]).toBe(false);
+    expect(mask[2]![0]).toBe(false);
+
+    // Top arm (row 0, cols 3-5) and bottom arm are occupied.
+    expect(mask[0]![3]).toBe(true);
+    expect(mask[0]![4]).toBe(true);
+    expect(mask[0]![5]).toBe(true);
+    expect(mask[8]![3]).toBe(true);
+
+    // Inner 7x7 (rows 1-7, cols 1-7) occupied.
+    expect(mask[1]![1]).toBe(true);
+    expect(mask[4]![4]).toBe(true);
+    expect(mask[7]![7]).toBe(true);
+
+    // Left arm (col 0, rows 3-5) occupied.
+    expect(mask[3]![0]).toBe(true);
+    expect(mask[4]![0]).toBe(true);
+    expect(mask[5]![0]).toBe(true);
+  });
+
+  it("generates an 11x11 mask with inner 9x9 block and 3-wide cross arms", () => {
+    const mask = circleOccupiedMask(11);
+    expect(mask).toHaveLength(11);
+
+    // Corner L-shapes unoccupied.
+    expect(mask[0]![0]).toBe(false);
+    expect(mask[0]![3]).toBe(false);
+    expect(mask[3]![0]).toBe(false);
+
+    // Top arm (row 0, cols 4-6) occupied.
+    expect(mask[0]![4]).toBe(true);
+    expect(mask[0]![5]).toBe(true);
+    expect(mask[0]![6]).toBe(true);
+
+    // Inner 9x9 (rows 1-9, cols 1-9) occupied.
+    expect(mask[1]![1]).toBe(true);
+    expect(mask[5]![5]).toBe(true);
+    expect(mask[9]![9]).toBe(true);
+  });
+});
+
+describe("applyOccupiedMask", () => {
+  it("passes bits through unchanged for square families", () => {
+    const bits = [[true, false], [false, true]];
+    const family: TagFamilyDef = {
+      name: "sq", mosaicPath: "", tileSize_px: 2,
+      widthAtBorder_modules: 2, validTagCount: 1, shape: "square",
+    };
+    const result = applyOccupiedMask(bits, family);
+    expect(result).toEqual(bits);
+    // Must be a different array instance.
+    expect(result).not.toBe(bits);
+  });
+
+  it("zeros out unoccupied corner cells for circle families", () => {
+    // All-true 9x9 grid: every cell starts black.
+    const allTrue = Array.from({ length: 9 }, () => Array(9).fill(true) as boolean[]);
+    const family: TagFamilyDef = {
+      name: "tagCircle21h7", mosaicPath: "", tileSize_px: 9,
+      widthAtBorder_modules: 5, validTagCount: 38, shape: "circle",
+    };
+    const result = applyOccupiedMask(allTrue, family);
+    // Corner cells should become false.
+    expect(result[0]![0]).toBe(false);
+    expect(result[0]![2]).toBe(false);
+    expect(result[2]![0]).toBe(false);
+    // Occupied cells remain true.
+    expect(result[0]![4]).toBe(true);
+    expect(result[4]![4]).toBe(true);
   });
 });

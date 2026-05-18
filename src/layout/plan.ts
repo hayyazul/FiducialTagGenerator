@@ -124,6 +124,10 @@ export function planSmallTagLayout(
   const block_h_mm = rows * cell + (rows - 1) * options.cutMargin_mm;
   const block_x0_mm = options.pageMargin_mm;
   const block_y0_mm = options.pageMargin_mm;
+  // Tile offset from cell origin — centres the tile within its cell.
+  // For squares this equals quietZone_mm; for circles it is larger, centering
+  // the cut circle within the cell.
+  const tileOffset = (cell - tileSize_mm) / 2;
 
   const pageCount = tags.length === 0 ? 0 : Math.ceil(tags.length / perPage);
   const placements: Placement[] = tags.map((tag, i) => {
@@ -138,8 +142,8 @@ export function planSmallTagLayout(
     return {
       tag,
       page,
-      x_mm: cellOrigin_x_mm + options.quietZone_mm,
-      y_mm: cellOrigin_y_mm + options.quietZone_mm,
+      x_mm: cellOrigin_x_mm + tileOffset,
+      y_mm: cellOrigin_y_mm + tileOffset,
     };
   });
 
