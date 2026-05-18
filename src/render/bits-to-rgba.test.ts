@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bitsToRgba } from "./tag-images";
+import { bitsToRgba } from "./bits-to-rgba";
 
 describe("bitsToRgba", () => {
   it("maps a black bit to opaque black and an unset bit to opaque white", () => {

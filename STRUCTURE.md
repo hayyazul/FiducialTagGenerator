@@ -35,11 +35,14 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 | `src/layout/types.ts` | Domain types for the layout engine: `TagSpec`, `Paper`, `LayoutOptions` (including the `packingStrategy` choice), `Placement`, `CutSegment`, `CutCircle`, and `LayoutPlan` — all in millimetres with bottom-left origin. |
 | `src/layout/plan.ts` | Layout planner: packs tags onto pages under the selected strategy (`grid` for squares, hexagonal close-packing for circles by default); computes placements, cut geometry, and page count. |
 | `src/layout/plan.test.ts` | Unit tests for the layout planner: grid and hex capacity, cut-segment generation, circle-plan geometry, hex-lattice invariants, and `maxTagSizeForCount` bounds under each strategy. |
-| `src/preview/svg.ts` | SVG preview renderer: converts one page of a `LayoutPlan` to an SVG string with tag images, cut lines/circles, registration marks, curved or linear captions, and sub-tag overlays. |
+| `src/preview/svg.ts` | Thin wrapper around `compose.composePage` + `SvgCanvas` for the live preview; adds the preview-only root `<svg>` chrome (border, display:block) and accepts a stub `BitGridRasterizer` for tests. |
 | `src/preview/svg.test.ts` | Unit tests for SVG rendering: placeholder fallback, image rendering, XML escaping, colour/style invariants, registration marks, circle output, sub-tag overlays, and curved quiet-zone text. |
-| `src/preview/tag-images.ts` | Tag bitmap rasteriser: converts bit grids into 1-pixel-per-bit PNG data URIs via an offscreen canvas, caching results for the preview. |
-| `src/preview/tag-images.test.ts` | Unit tests for `bitsToRgba`: black/white RGBA mapping and correct row ordering. |
-| `src/render/pdf.ts` | PDF renderer: converts a `LayoutPlan` into a multi-page PDF with calibration sheet, vector-drawn tags, cut lines/circles, registration marks, curved or linear captions, back labels, and page footers. |
+| `src/render/canvas.ts` | The `Canvas` interface used by `compose.composePage` and implemented by `SvgCanvas` (and, post-refactor, `PdfCanvas` / `PngCanvas`). Coordinate convention: millimetres, bottom-left origin. Stateless calls; style is per-call. |
+| `src/render/svg-canvas.ts` | `SvgCanvas` backend (SVG-string builder) and `createDomRasterizer` (DOM-backed bit-grid → PNG data URI helper used by the live preview). |
+| `src/render/compose.ts` | Single renderer pass: walks one page of a `LayoutPlan` and emits canvas calls (background, registration marks, placements with recursive sub-tags, optional quiet-zone captions, cut lines/circles). Backend-agnostic. |
+| `src/render/bits-to-rgba.ts` | Pure helper: marker bit grid → RGBA pixel buffer (opaque black/white). Shared by `SvgCanvas`'s DOM rasteriser and, eventually, the PNG export backend. |
+| `src/render/bits-to-rgba.test.ts` | Unit tests for `bitsToRgba`: black/white RGBA mapping, row ordering, buffer size. |
+| `src/render/pdf.ts` | PDF renderer: converts a `LayoutPlan` into a multi-page PDF with calibration sheet, vector-drawn tags, cut lines/circles, registration marks, curved or linear captions, back labels, and page footers. (Still pre-refactor; canvas migration pending.) |
 | `src/render/pdf.test.ts` | Unit tests for PDF rendering: round-trip parse validation, page sizing, placeholder rendering, back-page generation, circular quiet-zone labels, and subtag support. |
 | `src/tag-caption.ts` | Shared utility producing the one-line tag identification string (e.g. "tag36h11 #5 · 40 mm") and a size formatter, consumed by both renderers. |
 | `src/tag-caption.test.ts` | Unit tests for `formatTagSize` (decimal rounding) and `tagCaptionLine` (combined label output). |
