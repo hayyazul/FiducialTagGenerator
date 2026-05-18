@@ -561,20 +561,18 @@ function syncSubtagChain(): void {
     if (inheritBox && subIdsInput) {
       subIdsInput.disabled = inheritBox.checked;
       if (inheritBox.checked) {
-        const parentSpec = depth === 0
-          ? field("ids").value
-          : (document.getElementById(`subIds-${depth - 1}`) as HTMLInputElement | null)?.value ?? "";
-        let parentIds: number[];
+        const rootSpec = field("ids").value;
+        let rootIds: number[];
         try {
-          parentIds = parseTagIdSpec(parentSpec);
+          rootIds = parseTagIdSpec(rootSpec);
         } catch {
-          parentIds = [];
+          rootIds = [];
         }
         if (ancestorFamilies.has(subFamilyName)) {
-          const assigned = assignDissimilarIds(parentIds, subDef?.validTagCount ?? 0);
+          const assigned = assignDissimilarIds(rootIds, subDef?.validTagCount ?? 0);
           subIdsInput.value = formatIdSpec(assigned);
         } else {
-          subIdsInput.value = parentSpec;
+          subIdsInput.value = rootSpec;
         }
         subIdsInput.style.color = "#999";
       } else {
@@ -678,7 +676,7 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
           return null;
         }
       } else {
-        subIds = curIds;
+        subIds = parentIds;
       }
     } else {
       try {
