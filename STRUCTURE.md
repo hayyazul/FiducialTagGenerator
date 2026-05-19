@@ -31,15 +31,15 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 
 | File | Role |
 |------|------|
-| `src/main.ts` | Application entry point and UI orchestrator: builds the HTML form with recursive sub-tag UI, reads form state, validates inputs, lazy-loads family mosaics, computes the layout plan, renders SVG previews, and triggers PDF download. |
-| `src/families/family.ts` | Core abstractions: `Marker` (polymorphic draw), `BitGridMarker` (bit-grid impl), `MarkerProvider` (renderer seam), `Family` (catalogue + lifecycle), `FamilyGeometry` (static per-family shape). |
-| `src/families/index.ts` | Module-level registry: instantiates one `MosaicFamily` per AprilTag family and one `ArucoFamily` per ArUco dictionary, exposes `getFamily` / `listFamilies` / `listFamilyNames` / `listFamiliesByGroup` / `isRecursiveFamily`. |
+| `src/main.ts` | Application entry point and UI orchestrator: builds the HTML form with recursive sub-tag UI, reads form state, validates inputs, calls `family.load(ids)` for every requested id (chunk-level lazy fetch), computes the layout plan, renders SVG previews, and triggers PDF download. Readiness gating is per-(family, id) via `Family.isIdLoaded`. |
+| `src/families/family.ts` | Core abstractions: `Marker` (polymorphic draw), `BitGridMarker` (bit-grid impl), `MarkerProvider` (renderer seam), `Family` (catalogue + lifecycle, with `load(ids?)` for per-id chunk loading and `isIdLoaded(id)` for the placeholder gate), `FamilyGeometry` (static per-family shape). |
+| `src/families/index.ts` | Module-level registry: instantiates one `MosaicFamily` per AprilTag family (with per-family `chunkSize`) and one `ArucoFamily` per ArUco dictionary, exposes `getFamily` / `listFamilies` / `listFamilyNames` / `listFamiliesByGroup` / `isRecursiveFamily`. |
 | `src/families/aruco-family.ts` | `ArucoFamily` (`Family` impl): fetches an ArUco dictionary JSON, lazily builds `BitGridMarker`s of edge `gridSize + 2` (data grid + 1-cell black border). Pure `buildArucoBits` helper handles the source's `0=black` → project's `true=black` inversion. |
 | `src/families/aruco-family.test.ts` | Unit tests for `ArucoFamily`: border ring, bit inversion, lifecycle, RangeError on bad id, registry integration (18 dictionaries under the `ArUco` group). |
 | `src/families/mosaic-bits.ts` | Pure helpers for the AprilTag mosaic format: `mosaicGrid`, `extractTagBits`, `circleOccupiedMask`, `applyCircleMask`, `outerRadiusModulesFor`. Decoupled from the family object model. |
 | `src/families/mosaic-bits.test.ts` | Unit tests for mosaic-bits pure helpers: grid math, bit extraction from synthetic pixel buffers, circle masks, outer-radius measurement. |
-| `src/families/mosaic-family.ts` | `MosaicFamily` (`Family` impl): fetches a PNG mosaic, decodes via 2D canvas, extracts + caches `BitGridMarker`s on demand. Replaces the old `load.ts`. |
-| `src/families/mosaic-family.test.ts` | Unit tests for `MosaicFamily`: lifecycle (load idempotency, getMarker-before-load error), getMarker caching, RangeError on out-of-range id, circle-mask application. |
+| `src/families/mosaic-family.ts` | `MosaicFamily` (`Family` impl): fetches per-id chunk PNGs from `${chunkBasePath}/chunk_NNN.png`, decodes each via 2D canvas, extracts + caches `BitGridMarker`s on demand. `load(ids)` fetches only the chunks containing those ids; concurrent and repeat calls dedupe per chunk. |
+| `src/families/mosaic-family.test.ts` | Unit tests for `MosaicFamily` chunked loading: no-arg `load()` is a no-op, `load([id])` fetches just the containing chunk, `isIdLoaded` flips with chunk arrival, multi-chunk selective fetches, repeat-call and concurrent-call dedup, range checks, marker caching, circle-mask application, `chunkUrl` padding. |
 | `src/ids.ts` | Pure parser for tag-ID range specifications (e.g. "0-9, 12, 15-20"), producing an ordered array of integer IDs with validation. |
 | `src/ids.test.ts` | Unit tests for `parseTagIdSpec`: single IDs, ranges, mixed input, whitespace, backwards ranges, duplicates, malformed tokens, and oversized ranges. |
 | `src/layout/types.ts` | Domain types for the layout engine: `TagSpec`, `Paper`, `LayoutOptions` (including the `packingStrategy` choice), `Placement`, `CutSegment`, `CutCircle`, and `LayoutPlan` — all in millimetres with bottom-left origin. |
@@ -74,13 +74,14 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 | `vite.config.ts` | Vite + Vitest config: GitHub Pages base path and Node test environment. |
 | `eslint.config.js` | Flat ESLint config: recommended JS + typescript-eslint rules. |
 | `.nvmrc` | Pins Node version to 20. |
-| `.gitignore` | Ignores `node_modules/`, `dist/`, logs, `.vite/`, `coverage/`, `STYLES.md`, `.DS_Store`. |
+| `.gitignore` | Ignores `node_modules/`, `dist/`, logs, `.vite/`, `coverage/`, `STYLES.md`, `.DS_Store`, and `public/resources/*_mosaic.png` (build-time intermediates consumed by `scripts/chunk-mosaics.ts`). |
 
 ### Scripts (`scripts/`)
 
 | File | Role |
 |------|------|
-| `scripts/fetch-mosaics.ts` | One-shot Node script that downloads upstream `apriltag-imgs` mosaic PNGs into `public/resources/` and verifies geometry. |
+| `scripts/fetch-mosaics.ts` | Build-time helper: downloads upstream `apriltag-imgs` mosaic PNGs into `public/resources/` (git-ignored intermediates) and verifies their geometry. Run before `chunk-mosaics.ts`. |
+| `scripts/chunk-mosaics.ts` | Build-time helper: splits each `<family>_mosaic.png` into per-id chunk PNGs under `public/resources/apriltag/<family>/chunk_NNN.png`. Round-trip-verifies each chunk against the source. |
 | `scripts/perf-bench.ts` | Performance benchmark measuring layout planning, SVG rendering, and PDF rendering at various tag counts. |
 | `scripts/dump-mosaic-region.py` | Python diagnostic: ASCII-dumps a pixel rectangle from a mosaic to inspect separator/tile structure. |
 | `scripts/dump-mosaic-tile.py` | Python diagnostic: ASCII-dumps individual tiles from a mosaic to verify tile boundaries and content. |
@@ -88,14 +89,20 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 
 ### Static Assets (`public/resources/`)
 
-| File | Role |
+AprilTag mosaics are split into per-id chunk PNGs under
+`apriltag/<family>/chunk_NNN.png` (zero-padded to 3 digits). Each chunk
+holds up to `chunkSize` tiles in upstream tile + 1-pixel-separator
+format; the runtime fetches only the chunks containing the ids the user
+asked for. Generated from upstream by `scripts/chunk-mosaics.ts`.
+
+| Path | Role |
 |------|------|
-| `public/resources/tag36h11_mosaic.png` | Mosaic PNG for tag36h11 (587 tags, 10×10 px tiles). |
-| `public/resources/tagStandard41h12_mosaic.png` | Mosaic PNG for tagStandard41h12 (2115 tags, 9×9 px tiles). |
-| `public/resources/tagStandard52h13_mosaic.png` | Mosaic PNG for tagStandard52h13 (48714 tags, 10×10 px tiles). |
-| `public/resources/tagCustom48h12_mosaic.png` | Mosaic PNG for tagCustom48h12 (42211 tags, 10×10 px tiles). |
-| `public/resources/tagCircle21h7_mosaic.png` | Mosaic PNG for tagCircle21h7 (38 tags, 9×9 px tiles). |
-| `public/resources/tagCircle49h12_mosaic.png` | Mosaic PNG for tagCircle49h12 (65535 tags, 11×11 px tiles). |
+| `public/resources/apriltag/tag36h11/chunk_000.png` | Single chunk, 587 tags, 10×10 px tiles. |
+| `public/resources/apriltag/tagStandard41h12/chunk_000.png` | Single chunk, 2115 tags, 9×9 px tiles. |
+| `public/resources/apriltag/tagStandard52h13/chunk_000.png … chunk_190.png` | 191 chunks × 256 tags (last chunk shorter), 10×10 px tiles. |
+| `public/resources/apriltag/tagCustom48h12/chunk_000.png … chunk_164.png` | 165 chunks × 256 tags (last chunk shorter), 10×10 px tiles. |
+| `public/resources/apriltag/tagCircle21h7/chunk_000.png` | Single chunk, 38 tags, 9×9 px tiles. |
+| `public/resources/apriltag/tagCircle49h12/chunk_000.png … chunk_255.png` | 256 chunks × 256 tags (last chunk shorter), 11×11 px tiles. |
 | `public/resources/aruco_dictionaries/*.min.json` | 18 ArUco dictionary JSON files (original, mip 36h12, and 4× sizes for each of 4×4 / 5×5 / 6×6 / 7×7). Each file: `{name, gridSize, numMarkers, maxCorrectionBits, markers}` with row-major flat bit arrays per marker. |
 | `public/robots.txt` | Allows all crawlers and points to the sitemap. |
 | `public/sitemap.xml` | Single-URL sitemap for the site root; hand-maintained `lastmod`. |
