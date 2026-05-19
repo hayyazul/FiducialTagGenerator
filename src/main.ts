@@ -156,7 +156,7 @@ function tileSize_mmFromTagSize(tagSize_mm: number, family: Family): number {
 function maxFittingTagSize_mm(
   paper: Paper,
   pageMargin_mm: number,
-  familyDef: TagFamilyDef,
+  familyDef: Family,
   overrideAdvanced: boolean,
   quietZone_mm: number,
 ): number {
@@ -165,16 +165,16 @@ function maxFittingTagSize_mm(
     paper.height_mm - 2 * pageMargin_mm,
   );
   if (printable <= 0) return 0;
-  const wab = familyDef.widthAtBorder_modules;
-  if (familyDef.shape === "circle") {
-    const R = familyDef.outerRadius_modules!;
+  const wab = familyDef.geometry.widthAtBorder;
+  if (familyDef.geometry.outerShape === "circle") {
+    const R = familyDef.geometry.outerRadiusCells!;
     if (R <= 0) return 0;
     if (overrideAdvanced) {
       return Math.max(0, ((printable / 2) - quietZone_mm) * wab / R);
     }
     return printable * wab / (2 * (R + 0.5));
   }
-  const tile = familyDef.tileSize_px;
+  const tile = familyDef.geometry.edge;
   if (overrideAdvanced) {
     return Math.max(0, (printable - 2 * quietZone_mm) * wab / tile);
   }
@@ -473,7 +473,7 @@ const SIZE_SLIDER_MIN_MM = 10;
  *  input remains authoritative (it can hold values outside this range);
  *  setting `slider.max` below `slider.value` clamps the slider without
  *  firing input, so the number box is not silently rewritten. */
-function updateSliderMaxes(paper: Paper, options: LayoutOptions, familyDef: TagFamilyDef | undefined, overrideAdvanced: boolean): void {
+function updateSliderMaxes(paper: Paper, options: LayoutOptions, familyDef: Family | undefined, overrideAdvanced: boolean): void {
   const tagSlider = document.getElementById("tagSizeSlider") as HTMLInputElement | null;
   const totalSlider = document.getElementById("totalSizeSlider") as HTMLInputElement | null;
   if (!tagSlider && !totalSlider) return;

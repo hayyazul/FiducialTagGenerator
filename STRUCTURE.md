@@ -33,7 +33,9 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 |------|------|
 | `src/main.ts` | Application entry point and UI orchestrator: builds the HTML form with recursive sub-tag UI, reads form state, validates inputs, lazy-loads family mosaics, computes the layout plan, renders SVG previews, and triggers PDF download. |
 | `src/families/family.ts` | Core abstractions: `Marker` (polymorphic draw), `BitGridMarker` (bit-grid impl), `MarkerProvider` (renderer seam), `Family` (catalogue + lifecycle), `FamilyGeometry` (static per-family shape). |
-| `src/families/index.ts` | Module-level registry: instantiates one `MosaicFamily` per shipped family, exposes `getFamily` / `listFamilies` / `listFamilyNames` / `listFamiliesByGroup` / `isRecursiveFamily`. |
+| `src/families/index.ts` | Module-level registry: instantiates one `MosaicFamily` per AprilTag family and one `ArucoFamily` per ArUco dictionary, exposes `getFamily` / `listFamilies` / `listFamilyNames` / `listFamiliesByGroup` / `isRecursiveFamily`. |
+| `src/families/aruco-family.ts` | `ArucoFamily` (`Family` impl): fetches an ArUco dictionary JSON, lazily builds `BitGridMarker`s of edge `gridSize + 2` (data grid + 1-cell black border). Pure `buildArucoBits` helper handles the source's `0=black` → project's `true=black` inversion. |
+| `src/families/aruco-family.test.ts` | Unit tests for `ArucoFamily`: border ring, bit inversion, lifecycle, RangeError on bad id, registry integration (18 dictionaries under the `ArUco` group). |
 | `src/families/mosaic-bits.ts` | Pure helpers for the AprilTag mosaic format: `mosaicGrid`, `extractTagBits`, `circleOccupiedMask`, `applyCircleMask`, `outerRadiusModulesFor`. Decoupled from the family object model. |
 | `src/families/mosaic-bits.test.ts` | Unit tests for mosaic-bits pure helpers: grid math, bit extraction from synthetic pixel buffers, circle masks, outer-radius measurement. |
 | `src/families/mosaic-family.ts` | `MosaicFamily` (`Family` impl): fetches a PNG mosaic, decodes via 2D canvas, extracts + caches `BitGridMarker`s on demand. Replaces the old `load.ts`. |
@@ -94,6 +96,7 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 | `public/resources/tagCustom48h12_mosaic.png` | Mosaic PNG for tagCustom48h12 (42211 tags, 10×10 px tiles). |
 | `public/resources/tagCircle21h7_mosaic.png` | Mosaic PNG for tagCircle21h7 (38 tags, 9×9 px tiles). |
 | `public/resources/tagCircle49h12_mosaic.png` | Mosaic PNG for tagCircle49h12 (65535 tags, 11×11 px tiles). |
+| `public/resources/aruco_dictionaries/*.min.json` | 18 ArUco dictionary JSON files (original, mip 36h12, and 4× sizes for each of 4×4 / 5×5 / 6×6 / 7×7). Each file: `{name, gridSize, numMarkers, maxCorrectionBits, markers}` with row-major flat bit arrays per marker. |
 | `public/robots.txt` | Allows all crawlers and points to the sitemap. |
 | `public/sitemap.xml` | Single-URL sitemap for the site root; hand-maintained `lastmod`. |
 | `public/favicon.svg` | Inline SVG mark suggesting an AprilTag bit-grid, used as the browser tab favicon. |

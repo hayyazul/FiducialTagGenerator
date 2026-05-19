@@ -20,7 +20,34 @@ export {
 } from "./family";
 
 import type { Family } from "./family";
+import { ArucoFamily } from "./aruco-family";
 import { MosaicFamily } from "./mosaic-family";
+
+const ARUCO_DICT_BASE = `${import.meta.env.BASE_URL}resources/aruco_dictionaries`;
+
+/** ArUco dictionaries shipped under `public/resources/aruco_dictionaries/`.
+ *  Order follows grid size then dictionary size; the original Garrido-
+ *  Jurado dictionary and the ChArUco-mip "36h12" sit at either end. */
+const ARUCO_DICTS: ReadonlyArray<{ name: string; gridSize: number; count: number }> = [
+  { name: "aruco_original", gridSize: 5, count: 1024 },
+  { name: "aruco_4x4_50", gridSize: 4, count: 50 },
+  { name: "aruco_4x4_100", gridSize: 4, count: 100 },
+  { name: "aruco_4x4_250", gridSize: 4, count: 250 },
+  { name: "aruco_4x4_1000", gridSize: 4, count: 1000 },
+  { name: "aruco_5x5_50", gridSize: 5, count: 50 },
+  { name: "aruco_5x5_100", gridSize: 5, count: 100 },
+  { name: "aruco_5x5_250", gridSize: 5, count: 250 },
+  { name: "aruco_5x5_1000", gridSize: 5, count: 1000 },
+  { name: "aruco_6x6_50", gridSize: 6, count: 50 },
+  { name: "aruco_6x6_100", gridSize: 6, count: 100 },
+  { name: "aruco_6x6_250", gridSize: 6, count: 250 },
+  { name: "aruco_6x6_1000", gridSize: 6, count: 1000 },
+  { name: "aruco_7x7_50", gridSize: 7, count: 50 },
+  { name: "aruco_7x7_100", gridSize: 7, count: 100 },
+  { name: "aruco_7x7_250", gridSize: 7, count: 250 },
+  { name: "aruco_7x7_1000", gridSize: 7, count: 1000 },
+  { name: "aruco_mip_36h12", gridSize: 6, count: 250 },
+];
 
 const FAMILIES: Family[] = [
   new MosaicFamily({
@@ -82,6 +109,16 @@ const FAMILIES: Family[] = [
     },
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle49h12_mosaic.png`,
   }),
+  ...ARUCO_DICTS.map(
+    (d) =>
+      new ArucoFamily({
+        name: d.name,
+        group: "ArUco",
+        gridSize: d.gridSize,
+        count: d.count,
+        jsonPath: `${ARUCO_DICT_BASE}/${d.name}.min.json`,
+      }),
+  ),
 ];
 
 const FAMILIES_BY_NAME = new Map(FAMILIES.map((f) => [f.name, f]));
