@@ -148,6 +148,15 @@ const previewRasterizer = createDomRasterizer();
 let currentPlan: LayoutPlan | null = null;
 let currentTags: TagSpec[] | null = null;
 
+// Preview virtualization state. We build one `<section>` placeholder per page
+// with the paper's aspect ratio so the scroll height matches the real page
+// count, and only render full SVG for the pages currently in the viewport.
+// During a slider drag this keeps per-frame DOM work bounded to ~1–2 pages
+// regardless of how many IDs the user picked.
+let previewObserver: IntersectionObserver | null = null;
+const visiblePreviewPages = new Set<number>();
+let currentPreviewOpts: { printLabelsInQuietZone: boolean } = { printLabelsInQuietZone: false };
+
 function field(id: string): HTMLInputElement | HTMLSelectElement {
   const el = document.getElementById(id);
   if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLSelectElement)) {
@@ -362,6 +371,7 @@ function showInfo(text: string, isProblem = false): void {
 function failPreview(note: string, isProblem = true): void {
   const preview = document.getElementById("preview");
   if (preview) preview.innerHTML = "";
+  teardownPreviewVirtualization();
   showInfo(note, isProblem);
   currentPlan = null;
   currentTags = null;
@@ -479,11 +489,6 @@ function bindSliderToNumber(
  *  pointless. Number input is unbounded. */
 const SIZE_SLIDER_MIN_MM = 10;
 
-/** Number of pages to actually render into the live preview. The downloaded
- *  PDF still contains every page; this only bounds DOM-update cost per
- *  recompute so slider drags stay smooth at the 1000-id limit. */
-const PREVIEW_PAGE_CAP = 4;
-
 /** Update the `max` attribute on the tag-size and total-size sliders to
  *  reflect the largest tag that fits the current paper. The sliders shouldn't
  *  let the user drag to a value that immediately fails layout. The number
@@ -529,6 +534,137 @@ function syncSlidersFromInputs(): void {
       slider.value = String(v);
     }
   }
+}
+
+function teardownPreviewVirtualization(): void {
+  if (previewObserver) {
+    previewObserver.disconnect();
+    previewObserver = null;
+  }
+  visiblePreviewPages.clear();
+}
+
+function pageSectionHtml(plan: LayoutPlan, p: number): string {
+  return (
+    `<section data-page="${p}">` +
+    `<h3>Page ${p + 1} / ${plan.pageCount}</h3>` +
+    `<div class="page-slot" ` +
+    `style="aspect-ratio: ${plan.paper.width_mm} / ${plan.paper.height_mm}"></div>` +
+    `</section>`
+  );
+}
+
+function buildPreviewSkeleton(plan: LayoutPlan): string {
+  let html = "";
+  for (let p = 0; p < plan.pageCount; p++) html += pageSectionHtml(plan, p);
+  return html;
+}
+
+/** Bring the preview's `<section>` list in line with `plan` *without*
+ *  destroying sections that are unchanged. The wholesale-rebuild path —
+ *  `preview.innerHTML = …` followed by a fresh observer — causes a visible
+ *  flicker on every slider tick that crosses a per-page-capacity threshold:
+ *  the new sections are empty placeholders and the observer's first
+ *  callback runs in the next task, so the user sees an empty frame.
+ *
+ *  Strategy:
+ *   - If the paper aspect ratio changed (or there was nothing there), do a
+ *     full rebuild — the slot dimensions are baked into HTML.
+ *   - Otherwise, add/remove sections at the tail to match the new page
+ *     count, observe the new ones, unobserve the removed ones, and refresh
+ *     every "Page X / N" header. Sections that survive keep their rendered
+ *     SVG and their `IntersectionObserver` registration intact. */
+function reconcilePreviewSkeleton(preview: HTMLElement, plan: LayoutPlan): void {
+  const existing = Array.from(
+    preview.querySelectorAll<HTMLElement>("section[data-page]"),
+  );
+  const oldCount = existing.length;
+  const newCount = plan.pageCount;
+  const newAspect = `${plan.paper.width_mm} / ${plan.paper.height_mm}`;
+  const firstSlot = existing[0]?.querySelector<HTMLElement>(".page-slot");
+  const aspectChanged =
+    firstSlot !== null && firstSlot !== undefined && firstSlot.style.aspectRatio !== newAspect;
+
+  if (oldCount === 0 || aspectChanged) {
+    teardownPreviewVirtualization();
+    preview.innerHTML = buildPreviewSkeleton(plan);
+    setupPreviewObserver(preview);
+    return;
+  }
+
+  if (newCount > oldCount) {
+    let html = "";
+    for (let p = oldCount; p < newCount; p++) html += pageSectionHtml(plan, p);
+    preview.insertAdjacentHTML("beforeend", html);
+    if (previewObserver) {
+      preview
+        .querySelectorAll("section[data-page]")
+        .forEach((sec) => {
+          const p = Number((sec as HTMLElement).dataset.page);
+          if (p >= oldCount) previewObserver!.observe(sec);
+        });
+    }
+  } else if (newCount < oldCount) {
+    for (let p = oldCount - 1; p >= newCount; p--) {
+      const sec = existing[p]!;
+      if (previewObserver) previewObserver.unobserve(sec);
+      visiblePreviewPages.delete(p);
+      sec.remove();
+    }
+  }
+
+  if (newCount !== oldCount) {
+    const headers = preview.querySelectorAll<HTMLElement>(
+      "section[data-page] h3",
+    );
+    for (let p = 0; p < newCount; p++) {
+      const h3 = headers[p];
+      if (h3) h3.textContent = `Page ${p + 1} / ${newCount}`;
+    }
+  }
+}
+
+function renderPageIntoSlot(
+  slot: Element,
+  plan: LayoutPlan,
+  pageIndex: number,
+): void {
+  slot.innerHTML = renderPlanToSvg(plan, pageIndex, markerProvider, {
+    ...currentPreviewOpts,
+    rasterizer: previewRasterizer,
+  });
+}
+
+/** Hook up the IntersectionObserver that streams page SVGs in as they
+ *  scroll into view and tears them down as they leave. The observer reads
+ *  `currentPlan` at fire time, so it stays correct across recomputes that
+ *  reuse the same skeleton. `rootMargin` is generous so a fast scroll
+ *  doesn't see empty placeholders for long. */
+function setupPreviewObserver(preview: HTMLElement): void {
+  previewObserver = new IntersectionObserver(
+    (entries) => {
+      if (!currentPlan) return;
+      for (const entry of entries) {
+        const sec = entry.target as HTMLElement;
+        const p = Number(sec.dataset.page);
+        const slot = sec.querySelector(".page-slot");
+        if (!slot) continue;
+        if (entry.isIntersecting) {
+          if (!visiblePreviewPages.has(p)) {
+            visiblePreviewPages.add(p);
+            renderPageIntoSlot(slot, currentPlan, p);
+          }
+        } else if (visiblePreviewPages.has(p)) {
+          visiblePreviewPages.delete(p);
+          slot.innerHTML = "";
+        }
+      }
+    },
+    { root: preview, rootMargin: "300px 0px" },
+  );
+  preview.querySelectorAll("section[data-page]").forEach((sec) => {
+    previewObserver!.observe(sec);
+  });
 }
 
 function recompute(): void {
@@ -755,33 +891,31 @@ function recompute(): void {
       `<p>${escapeHtml(detail)}</p>` +
       (subLine ? `<p>${escapeHtml(subLine)}</p>` : "");
   }
-  const previewOpts = {
+  currentPreviewOpts = {
     printLabelsInQuietZone:
       (field("printLabelsInQuietZone") as HTMLInputElement).checked,
   };
-  // Live preview is capped so a slider drag never has to re-emit dozens of
-  // pages of SVG per frame. The full layout is in the downloaded PDF; the
-  // summary line above already reports the real page count. Cap chosen to
-  // keep ~80 tags in the DOM at full A4 / 40 mm and stay inside a 60 fps
-  // budget on typical hardware.
-  const previewPages = Math.min(plan.pageCount, PREVIEW_PAGE_CAP);
-  const pagesHtml = Array.from({ length: previewPages }, (_, p) => {
-    return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
-      plan,
-      p,
-      markerProvider,
-      { ...previewOpts, rasterizer: previewRasterizer },
-    )}</section>`;
-  }).join("");
-  const hiddenPages = plan.pageCount - previewPages;
-  const previewMore = hiddenPages > 0
-    ? `<p class="preview-more">+ ${hiddenPages} more page${hiddenPages === 1 ? "" : "s"} in the downloaded file</p>`
-    : "";
-  preview.innerHTML = pagesHtml
-    ? pagesHtml + previewMore
-    : `<p style="color:#888">No pages — add some tags.</p>`;
   currentPlan = plan;
   currentTags = tags;
+  if (plan.pageCount === 0) {
+    teardownPreviewVirtualization();
+    preview.innerHTML = `<p style="color:#888">No pages — add some tags.</p>`;
+  } else {
+    if (preview.querySelector("section[data-page]") === null) {
+      // First render after an empty/failed state — wipe the "No pages"
+      // text before the reconciler runs against an empty section list.
+      preview.innerHTML = "";
+    }
+    reconcilePreviewSkeleton(preview, plan);
+    // Visible pages always re-render synchronously with the latest plan,
+    // so a slider drag that doesn't change the page count still updates
+    // the tag dimensions you're looking at.
+    for (const p of visiblePreviewPages) {
+      const sec = preview.querySelector(`section[data-page="${p}"]`);
+      const slot = sec?.querySelector(".page-slot");
+      if (slot) renderPageIntoSlot(slot, plan, p);
+    }
+  }
   syncDownloadButton();
 }
 

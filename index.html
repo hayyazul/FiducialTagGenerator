@@ -97,10 +97,14 @@
       }
       .preview-pane #preview > section svg { width: 100%; height: auto; display: block; }
       .preview-pane #preview > section h3 { text-align: center; }
-      .preview-pane #preview > .preview-more {
-        flex: 1 1 100%; text-align: center; margin: 0.25rem 0 0;
-        color: #888; font-size: 0.9em;
-      }
+      /* Empty placeholder for a not-yet-rendered page. The aspect-ratio
+         CSS variable is set inline so each placeholder matches the paper's
+         shape; once the SVG streams in, the svg's `width:100%; height:auto`
+         takes over and the slot shrink-wraps it. */
+      .preview-pane #preview .page-slot { width: 100%; background: #fff;
+                                          border: 1px solid #999;
+                                          box-sizing: border-box; }
+      .preview-pane #preview .page-slot:has(svg) { border: none; }
 
       @media (max-width: 640px) {
         #app { height: auto; flex-direction: column; }
