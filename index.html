@@ -221,35 +221,30 @@
   </head>
   <body>
     <header class="site-header">
-      <h1>ArUco and AprilTag Generator</h1>
-      <p class="tagline">Generate ready-to-print AprilTags and ArUco markers as PDFs. Free, opensource, browser-based, with built-in support for recursive nested tags.</p>
+      <h1>ArUco, CCTag, and AprilTag Generator</h1>
+      <p class="tagline">Generate various ready-to-print fiducial tags for print as pdfs, pngs, or svgs. Free, opensource, browser-based, with built-in support for recursive nested tags (e.g. tagCustom48h12).</p>
     </header>
     <main id="app"></main>
     <footer class="site-footer">
-      <h2>About this generator</h2>
-      <p>This is a simple web tool to generate PDFs of AprilTag and ArUco fiducial markers. Pick a family, the desired size, and tag IDs, and the tool packs as many tags as fit per page — with quiet zones and cut margins computed correctly. Everything runs in your browser. You can also download the github repository to run it offline.</p>
-
       <h2>What are AprilTags?</h2>
-      <p>AprilTags are 2D visual fiducial markers developed at the University of Michigan&rsquo;s APRIL Lab, widely used in robotics, drones, augmented reality, and computer vision research for pose estimation and object identification. The detector is open source and the bitmap encodings are published. This tool uses the official tag bitmaps from <a href="https://github.com/AprilRobotics/apriltag-imgs" rel="noopener">apriltag-imgs</a>; the detector itself lives in <a href="https://april.eecs.umich.edu/software/apriltag" rel="noopener">AprilRobotics&rsquo; apriltag library</a>.</p>
+      <p>AprilTags are 2D visual fiducial markers developed at the University of Michigan&rsquo;s APRIL Lab. They are used in robotics, drones, augmented reality, and computer vision research for pose estimation and object identification. The detector is open source and the bitmap encodings are published. This tool uses the official tag bitmaps from <a href="https://github.com/AprilRobotics/apriltag-imgs" rel="noopener">apriltag-imgs</a>; the detector itself lives in <a href="https://april.eecs.umich.edu/software/apriltag" rel="noopener">AprilRobotics&rsquo; apriltag library</a>.</p>
 
       <h2>What are ArUco markers?</h2>
-      <p>ArUco is another popular family of 2D fiducial markers, originally developed at the Universidad de Córdoba and shipped with OpenCV&rsquo;s <code>aruco</code> module. They differ from AprilTags in their bit layout and Hamming distances, but are similar in role. If your toolchain is OpenCV-based, ArUco is often the natural pick. See the <a href="https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html" rel="noopener">OpenCV ArUco detection tutorial</a>.</p>
+      <p>ArUco is another popular family of 2D fiducial markers, originally developed at the Universidad de Córdoba and shipped with OpenCV&rsquo;s <code>aruco</code> module. They differ from AprilTags in their bit layout and Hamming distances, but are similar in role. See the <a href="https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html" rel="noopener">OpenCV ArUco detection tutorial</a>.</p>
 
       <h2>Supported tag families</h2>
       <ul>
-        <li><strong>AprilTag</strong>: <code>tag36h11</code> (the robotics default), <code>tagStandard41h12</code>, <code>tagStandard52h13</code>, <code>tagCustom48h12</code>, plus the circular families <code>tagCircle21h7</code> and <code>tagCircle49h12</code>.</li>
-        <li><strong>ArUco</strong>: the <code>DICT_4X4</code>, <code>DICT_5X5</code>, <code>DICT_6X6</code>, and <code>DICT_7X7</code> dictionaries at sizes 50, 100, 250, and 1000; the original ArUco dictionary; and the <code>DICT_APRILTAG_*</code> AprilTag-compatible variants.</li>
+        <li><strong>AprilTag</strong>: <code>tag36h11</code> (the robotics default), <code>tagStandard41h12</code>, <code>tagStandard52h13</code>, the recursive AprilTag <code>tagCustom48h12</code>, plus the circular families <code>tagCircle21h7</code> and <code>tagCircle49h12</code>.</li>
+        <li><strong>ArUco</strong>: the <code>DICT_4X4</code>, <code>DICT_5X5</code>, <code>DICT_6X6</code>, and <code>DICT_7X7</code> dictionaries at sizes 50, 100, 250, and 1000; it also includes the original ArUco dictionary. </li>
+       <li><strong>CCTag</strong>: <code>cctag3</code> and <code>cctag4</code> are supported.</li>
       </ul>
 
       <h2>Recursive nested tags</h2>
-      <p>You can nest a smaller tag inside another tag&rsquo;s center region. The tool computes the inner tag&rsquo;s size and quiet zone automatically and renders both as a single printable PDF. Useful for multi-scale detection (close-range cameras read the small inner tag; long-range cameras read the outer tag) and for increasing detection accuracy as a whole. Currently supported on the <code>tagCustom48h12</code> AprilTag family and on ArUco families with a sufficiently large center region.</p>
-
-      <h2>Limelight, FRC, and printing notes</h2>
-      <p>The PDF output is print-ready at the physical size you specify. Set your printer&rsquo;s <em>Page Scaling</em> to <em>None</em> (sometimes called &ldquo;Actual Size&rdquo; or 100%) so the printed tags match the requested millimeter dimensions. For FRC (FIRST Robotics) competitions, <code>tag36h11</code> at competition-spec sizes is supported.</p>
+      <p>You can nest a smaller tag inside another tag&rsquo;s center region. The tool computes the inner tag&rsquo;s size and quiet zone automatically and renders both as a single printable PDF. Useful for applications which benefit from multi-scale detection, like take-off and landing sites for drones and for increasing detection accuracy as a whole. Currently supported on the <code>tagCustom48h12</code> AprilTag family, with all square tags supported as sub-families.</p>
 
       <h2>About the author</h2>
       <p class="author-bio">Built by Ayyazul Hassan, CS at UIUC and member of SIGRobotics@UIUC.</p>
-      <p class="author-bio">GitHub: <a href="https://github.com/hayyazul" rel="noopener">github.com/hayyazul</a> &middot; Personal site: <em>coming soon</em></p>
+      <p class="author-bio"><a href="https://www.github.com/hayyazul" rel="noopener">Github</a> &middot; <a href="https://www.linkedin.com/in/ayyaz0000">LinkedIn<a/> &middot; Personal site: <em>coming soon</em></p>
 
       <h2>Related links</h2>
       <ul>
