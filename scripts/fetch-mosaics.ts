@@ -129,12 +129,13 @@ async function processFamily(family: ExpectedFamily, force: boolean): Promise<Ve
 function snippet(r: VerifyResult): string {
   const f = r.family;
   return (
-    `  ${f.name}: {\n` +
+    `  new MosaicFamily({\n` +
     `    name: "${f.name}",\n` +
-    `    mosaicPath: \`\${import.meta.env.BASE_URL}resources/${f.name}_mosaic.png\`,\n` +
-    `    tileSize_px: ${f.tileSize_px},\n` +
-    `    validTagCount: ${f.validTagCount},\n` +
-    `  },`
+    `    count: ${f.validTagCount},\n` +
+    `    chunkSize: ${f.validTagCount > 4096 ? 256 : f.validTagCount},\n` +
+    `    geometry: { edge: ${f.tileSize_px}, widthAtBorder: ?, outerShape: "square" },\n` +
+    `    chunkBasePath: \`\${APRILTAG_BASE}/${f.name}\`,\n` +
+    `  }),`
   );
 }
 

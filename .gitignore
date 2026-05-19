@@ -5,3 +5,8 @@ dist/
 .DS_Store
 coverage/
 STYLES.md
+# Upstream apriltag-imgs mosaics are build-time inputs to
+# scripts/chunk-mosaics.ts. The runtime ships the chunked PNGs under
+# public/resources/apriltag/ instead; the unchunked mosaics are
+# regenerable via scripts/fetch-mosaics.ts and never checked in.
+public/resources/*_mosaic.png

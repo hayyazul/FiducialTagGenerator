@@ -9,6 +9,12 @@
  * families use `chunkSize = count` so they collapse to a single chunk —
  * the code path is uniform; only the file count differs.
  *
+ * Source mosaics are no longer checked in; run `scripts/fetch-mosaics.ts`
+ * first to download them into `public/resources/` (they're git-ignored
+ * intermediates), then run this script to regenerate the chunks under
+ * `public/resources/apriltag/`. The chunks ARE checked in — they're the
+ * artifacts the app ships.
+ *
  * Run with:   npx vite-node scripts/chunk-mosaics.ts
  *
  * Verification: after writing each chunk, the script decodes it back and
