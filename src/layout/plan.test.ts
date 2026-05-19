@@ -54,28 +54,42 @@ describe("planSmallTagLayout — grid capacity", () => {
     expect(plan.placements[1]?.x_mm).toBeCloseTo(1 + 23.5, 6);
   });
 
-  it("at cutMargin=0, pitch equals cell width and adjacent cuts share a single line", () => {
+  it("at cutMargin=0, adjacent cells share their boundary cuts", () => {
     const opts: LayoutOptions = { ...noMargins, quietZone_mm: 1, cutMargin_mm: 0 };
     const plan = planSmallTagLayout(makeTags("tag36h11", 16), 20, square100, opts);
-    // tile 20 + 2*quiet 1 = 22 mm cell; 4 cells fit in 100 mm with 12 mm slack.
+    // tile 20 + 2*quiet 1 = 22 mm cell; 4×4 grid of 22 mm cells.
     expect(plan.placements).toHaveLength(16);
     const cuts = plan.cutSegments.filter((c) => c.page === 0);
     const verticals = cuts.filter((c) => c.x0_mm === c.x1_mm);
-    // 4 cells share boundaries: 4+1 = 5 unique vertical cuts (the grid).
-    expect(verticals.length).toBe(5);
+    // 5 unique x positions (4 cells → 5 boundary x's) × 4 rows = 20 verticals.
+    const uniqueXs = new Set(verticals.map((c) => c.x0_mm));
+    expect(uniqueXs.size).toBe(5);
+    expect(verticals.length).toBe(20);
   });
 
-  it("at cutMargin>0, emits two cut lines per interior boundary", () => {
+  it("at cutMargin>0, every cell carries its own four edges (no sharing)", () => {
     const opts: LayoutOptions = { ...noMargins, quietZone_mm: 1, cutMargin_mm: 1.5 };
     const plan = planSmallTagLayout(makeTags("tag36h11", 16), 20, square100, opts);
     const cuts = plan.cutSegments.filter((c) => c.page === 0);
     const verticals = cuts.filter((c) => c.x0_mm === c.x1_mm);
-    // 4 cells × 2 edges each = 8 vertical cuts (no sharing when there is a gap).
-    expect(verticals.length).toBe(8);
-    // The gap between cell 0's right cut and cell 1's left cut is cutMargin_mm.
+    // 4 cells × 2 edges × 4 rows = 32 verticals; 8 unique x positions.
+    expect(verticals.length).toBe(32);
     const xs = [...new Set(verticals.map((c) => c.x0_mm))].sort((a, b) => a - b);
+    expect(xs.length).toBe(8);
     expect(xs[1]! - xs[0]!).toBeCloseTo(22, 6); // cell width
     expect(xs[2]! - xs[1]!).toBeCloseTo(1.5, 6); // cut margin gap
+  });
+
+  it("omits cut lines around unoccupied cells on a partial last page", () => {
+    // 25 cells fit per page; ask for 27 so page 1 has only 2 cells, leaving 23
+    // empty. Per-marker cuts should leave those empty cells uncut.
+    const plan = planSmallTagLayout(makeTags("tag36h11", 27), 20, square100, noMargins);
+    const page1Cuts = plan.cutSegments.filter((c) => c.page === 1);
+    const page1Placements = plan.placements.filter((p) => p.page === 1);
+    expect(page1Placements).toHaveLength(2);
+    // Two adjacent cells with cutMargin=0 share one edge — 7 unique segments,
+    // not the full 5×5 grid that would mark up every empty cell as well.
+    expect(page1Cuts).toHaveLength(7);
   });
 
 });
@@ -110,16 +124,19 @@ describe("planSmallTagLayout — page assignment", () => {
 });
 
 describe("planSmallTagLayout — cut segments", () => {
-  it("emits a shared grid at cutMargin=0 (rows+1 horizontals, cols+1 verticals)", () => {
-    // 2×2 grid: 50mm paper with 25mm cell = 2 cols. cutMargin=0 collapses
-    // adjacent boundaries to a single shared line.
+  it("at cutMargin=0 a 2x2 grid has 3 unique x and 3 unique y boundaries", () => {
+    // 2×2 grid: 50mm paper with 25mm cell = 2 cols. Shared boundaries collapse
+    // by dedup; each row still emits its own short segments along those x's.
     const paper: Paper = { width_mm: 50, height_mm: 50 };
     const plan = planSmallTagLayout(makeTags("tag36h11", 4), 25, paper, noMargins);
     const cuts = plan.cutSegments.filter((c) => c.page === 0);
     const verticals = cuts.filter((c) => c.x0_mm === c.x1_mm);
     const horizontals = cuts.filter((c) => c.y0_mm === c.y1_mm);
-    expect(verticals).toHaveLength(3); // cols+1
-    expect(horizontals).toHaveLength(3); // rows+1
+    expect(new Set(verticals.map((c) => c.x0_mm)).size).toBe(3);
+    expect(new Set(horizontals.map((c) => c.y0_mm)).size).toBe(3);
+    // Each row contributes 3 verticals; two rows → 6. Same for horizontals.
+    expect(verticals).toHaveLength(6);
+    expect(horizontals).toHaveLength(6);
   });
 });
 

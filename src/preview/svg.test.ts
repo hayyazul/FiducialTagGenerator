@@ -82,14 +82,15 @@ describe("renderPlanToSvg", () => {
     expect(svg).toContain("&lt;bad&amp;family&gt;");
   });
 
-  it("paints only what the PDF prints: no cream quiet zones, no dashed margin guide, grey cut lines", () => {
+  it("paints only what the PDF prints: no cream quiet zones, grey dashed cut lines", () => {
     const opts: LayoutOptions = { pageMargin_mm: 5, quietZone_mm: 1, cutMargin_mm: 0 };
     const plan = planSmallTagLayout([{ family: "tag36h11", id: 0 }], 20, square100, opts);
     const svg = renderPlanToSvg(plan, 0);
     expect(svg).not.toContain("#fff8d6");
-    expect(svg).not.toContain("stroke-dasharray");
     expect(svg).not.toContain('stroke="#c00"');
     expect(svg).toContain('stroke="#8c8c8c"'); // PDF cut-line grey
+    // Cut lines are now dashed — matches the printed PDF.
+    expect(svg).toContain("stroke-dasharray");
   });
 
   it("draws the four corner registration marks when there is a page margin", () => {

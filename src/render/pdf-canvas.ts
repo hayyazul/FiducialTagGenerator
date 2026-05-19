@@ -88,6 +88,7 @@ export class PdfCanvas implements Canvas {
     if (opts.stroke) {
       args.borderColor = toPdfColor(opts.stroke);
       args.borderWidth = opts.strokeWidth_mm ?? 0.25;
+      if (opts.dash_mm) args.borderDashArray = [PT(opts.dash_mm[0]), PT(opts.dash_mm[1])];
     }
     this.pdfPage.drawRectangle(args);
   }
@@ -102,17 +103,20 @@ export class PdfCanvas implements Canvas {
     if (opts.stroke) {
       args.borderColor = toPdfColor(opts.stroke);
       args.borderWidth = opts.strokeWidth_mm ?? 0.25;
+      if (opts.dash_mm) args.borderDashArray = [PT(opts.dash_mm[0]), PT(opts.dash_mm[1])];
     }
     this.pdfPage.drawCircle(args);
   }
 
   drawLine(opts: LineOpts): void {
-    this.pdfPage.drawLine({
+    const args: Parameters<PDFPage["drawLine"]>[0] = {
       start: { x: PT(opts.x0_mm), y: PT(opts.y0_mm) },
       end: { x: PT(opts.x1_mm), y: PT(opts.y1_mm) },
       color: toPdfColor(opts.stroke),
       thickness: opts.strokeWidth_mm,
-    });
+    };
+    if (opts.dash_mm) args.dashArray = [PT(opts.dash_mm[0]), PT(opts.dash_mm[1])];
+    this.pdfPage.drawLine(args);
   }
 
   drawText(opts: TextOpts): void {

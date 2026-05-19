@@ -202,7 +202,7 @@ export function planSmallTagLayout(
 
   const cutSegments =
     cutShape.kind === "square"
-      ? computeGridCutSegments(pageCount, paper, tileSize_mm, options, cutShape)
+      ? computePerPlacementCutSegments(placements, tileSize_mm, options, cutShape)
       : [];
 
   const cutCircles =
@@ -302,34 +302,45 @@ function placeHex(
   });
 }
 
-/** Grid cut segments — wrapper that pulls the geometry out of the caller. */
-function computeGridCutSegments(
-  pageCount: number,
-  paper: Paper,
+/** Per-placement cut segments: each occupied cell emits its four boundary
+ *  segments, deduplicated per page. At `cutMargin_mm = 0` two neighbouring
+ *  cells share a coincident edge so dedup keeps a single shared cut; with a
+ *  gap each cell carries its own four edges. A partial last page only emits
+ *  cuts around the cells that are actually filled — empty cells in the trailing
+ *  rows carry no cut lines, matching the per-marker behaviour already used
+ *  for circular families. */
+function computePerPlacementCutSegments(
+  placements: readonly Placement[],
   tileSize_mm: number,
   options: LayoutOptions,
   cutShape: CutShape,
 ): CutSegment[] {
-  const printable_x_mm = paper.width_mm - 2 * options.pageMargin_mm;
-  const printable_y_mm = paper.height_mm - 2 * options.pageMargin_mm;
-  const cols = tagsPerAxis(printable_x_mm, tileSize_mm, options, cutShape);
-  const rows = tagsPerAxis(printable_y_mm, tileSize_mm, options, cutShape);
-  if (cols < 1 || rows < 1) return [];
+  if (cutShape.kind !== "square" || placements.length === 0) return [];
   const cell = cellWidth_mm(tileSize_mm, options, cutShape);
-  const pitch = pitch_mm(tileSize_mm, options, cutShape);
-  const block_w_mm = cols * cell + (cols - 1) * options.cutMargin_mm;
-  const block_h_mm = rows * cell + (rows - 1) * options.cutMargin_mm;
-  return computeCutSegments(
-    pageCount,
-    cols,
-    rows,
-    options.pageMargin_mm,
-    options.pageMargin_mm,
-    block_w_mm,
-    block_h_mm,
-    cell,
-    pitch,
-  );
+  const tileOffset = (cell - tileSize_mm) / 2;
+  const seen = new Set<string>();
+  const segs: CutSegment[] = [];
+  const k = (page: number, x0: number, y0: number, x1: number, y1: number): string =>
+    `${page}|${Math.round(x0 * 1e6)}|${Math.round(y0 * 1e6)}|${Math.round(x1 * 1e6)}|${Math.round(y1 * 1e6)}`;
+  for (const p of placements) {
+    const x0 = p.x_mm - tileOffset;
+    const y0 = p.y_mm - tileOffset;
+    const x1 = x0 + cell;
+    const y1 = y0 + cell;
+    const edges: [number, number, number, number][] = [
+      [x0, y0, x0, y1],
+      [x1, y0, x1, y1],
+      [x0, y0, x1, y0],
+      [x0, y1, x1, y1],
+    ];
+    for (const [ax, ay, bx, by] of edges) {
+      const key = k(p.page, ax, ay, bx, by);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      segs.push({ page: p.page, x0_mm: ax, y0_mm: ay, x1_mm: bx, y1_mm: by });
+    }
+  }
+  return segs;
 }
 
 /** One CutCircle per placement: centre at the tile centre, radius from the
@@ -347,73 +358,6 @@ function computeCutCircles(
     cy_mm: p.y_mm + tileSize_mm / 2,
     radius_mm: radius,
   }));
-}
-
-/** Emit a cut grid spanning the block. Each cell contributes a left and a
- *  right cut, and likewise top and bottom; when `cutMargin_mm = 0` the
- *  pitch equals the cell width and adjacent boundaries collapse to a single
- *  shared line. */
-function computeCutSegments(
-  pageCount: number,
-  cols: number,
-  rows: number,
-  block_x0_mm: number,
-  block_y0_mm: number,
-  block_w_mm: number,
-  block_h_mm: number,
-  cellWidth: number,
-  pitch: number,
-): CutSegment[] {
-  const xs = uniqueAxisPositions(block_x0_mm, cols, cellWidth, pitch);
-  const ys = uniqueAxisPositions(block_y0_mm, rows, cellWidth, pitch);
-  const segs: CutSegment[] = [];
-  for (let p = 0; p < pageCount; p++) {
-    for (const x of xs) {
-      segs.push({
-        page: p,
-        x0_mm: x,
-        y0_mm: block_y0_mm,
-        x1_mm: x,
-        y1_mm: block_y0_mm + block_h_mm,
-      });
-    }
-    for (const y of ys) {
-      segs.push({
-        page: p,
-        x0_mm: block_x0_mm,
-        y0_mm: y,
-        x1_mm: block_x0_mm + block_w_mm,
-        y1_mm: y,
-      });
-    }
-  }
-  return segs;
-}
-
-/** Cell-boundary positions along one axis: each cell's left edge plus its
- *  right edge, deduplicated. Returned in ascending order. */
-function uniqueAxisPositions(
-  origin_mm: number,
-  count: number,
-  cellWidth: number,
-  pitch: number,
-): number[] {
-  const seen = new Set<number>();
-  const positions: number[] = [];
-  const key = (v: number): number => Math.round(v * 1e6);
-  for (let i = 0; i < count; i++) {
-    const left = origin_mm + i * pitch;
-    const right = left + cellWidth;
-    for (const pos of [left, right]) {
-      const k = key(pos);
-      if (!seen.has(k)) {
-        seen.add(k);
-        positions.push(pos);
-      }
-    }
-  }
-  positions.sort((a, b) => a - b);
-  return positions;
 }
 
 /**

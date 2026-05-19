@@ -77,6 +77,8 @@ export interface RectOpts {
   fill?: Color;
   stroke?: Color;
   strokeWidth_mm?: number;
+  /** Dash pattern in mm: `[dash, gap]`. Omit for a solid stroke. */
+  dash_mm?: readonly [number, number];
 }
 
 export interface CircleOpts {
@@ -86,6 +88,8 @@ export interface CircleOpts {
   fill?: Color;
   stroke?: Color;
   strokeWidth_mm?: number;
+  /** Dash pattern in mm: `[dash, gap]`. Omit for a solid stroke. */
+  dash_mm?: readonly [number, number];
 }
 
 export interface LineOpts {
@@ -95,6 +99,8 @@ export interface LineOpts {
   y1_mm: number;
   stroke: Color;
   strokeWidth_mm: number;
+  /** Dash pattern in mm: `[dash, gap]`. Omit for a solid stroke. */
+  dash_mm?: readonly [number, number];
 }
 
 export interface TextOpts {

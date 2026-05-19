@@ -67,6 +67,11 @@ export class PngCanvas implements Canvas {
     this.scratchCtx = sctx;
   }
 
+  /** Convert a `[dash, gap]` mm pattern to a Canvas2D pixel pattern. */
+  private dashPx(dash: readonly [number, number] | undefined): number[] {
+    return dash ? [this.toPx(dash[0]), this.toPx(dash[1])] : [];
+  }
+
   drawRect(opts: RectOpts): void {
     const x = this.toPx(opts.x_mm);
     const y = this.flipY(opts.y_mm + opts.height_mm);
@@ -77,9 +82,12 @@ export class PngCanvas implements Canvas {
       this.ctx.fillRect(x, y, w, h);
     }
     if (opts.stroke) {
+      this.ctx.save();
+      this.ctx.setLineDash(this.dashPx(opts.dash_mm));
       this.ctx.strokeStyle = colorToCss(opts.stroke);
       this.ctx.lineWidth = this.toPx(opts.strokeWidth_mm ?? 0.25);
       this.ctx.strokeRect(x, y, w, h);
+      this.ctx.restore();
     }
   }
 
@@ -97,19 +105,25 @@ export class PngCanvas implements Canvas {
       this.ctx.fill();
     }
     if (opts.stroke) {
+      this.ctx.save();
+      this.ctx.setLineDash(this.dashPx(opts.dash_mm));
       this.ctx.strokeStyle = colorToCss(opts.stroke);
       this.ctx.lineWidth = this.toPx(opts.strokeWidth_mm ?? 0.25);
       this.ctx.stroke();
+      this.ctx.restore();
     }
   }
 
   drawLine(opts: LineOpts): void {
+    this.ctx.save();
     this.ctx.beginPath();
     this.ctx.moveTo(this.toPx(opts.x0_mm), this.flipY(opts.y0_mm));
     this.ctx.lineTo(this.toPx(opts.x1_mm), this.flipY(opts.y1_mm));
+    this.ctx.setLineDash(this.dashPx(opts.dash_mm));
     this.ctx.strokeStyle = colorToCss(opts.stroke);
     this.ctx.lineWidth = this.toPx(opts.strokeWidth_mm);
     this.ctx.stroke();
+    this.ctx.restore();
   }
 
   drawText(opts: TextOpts): void {

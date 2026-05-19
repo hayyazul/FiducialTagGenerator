@@ -119,6 +119,7 @@ export class SvgCanvas implements Canvas {
     if (opts.stroke) {
       attrs.push(`stroke="${colorToHex(opts.stroke)}"`);
       attrs.push(`stroke-width="${opts.strokeWidth_mm ?? 0.25}"`);
+      if (opts.dash_mm) attrs.push(`stroke-dasharray="${opts.dash_mm[0]} ${opts.dash_mm[1]}"`);
     }
     this.parts.push(`<rect ${attrs.join(" ")}/>`);
   }
@@ -133,15 +134,17 @@ export class SvgCanvas implements Canvas {
     if (opts.stroke) {
       attrs.push(`stroke="${colorToHex(opts.stroke)}"`);
       attrs.push(`stroke-width="${opts.strokeWidth_mm ?? 0.25}"`);
+      if (opts.dash_mm) attrs.push(`stroke-dasharray="${opts.dash_mm[0]} ${opts.dash_mm[1]}"`);
     }
     this.parts.push(`<circle ${attrs.join(" ")}/>`);
   }
 
   drawLine(opts: LineOpts): void {
+    const dash = opts.dash_mm ? ` stroke-dasharray="${opts.dash_mm[0]} ${opts.dash_mm[1]}"` : "";
     this.parts.push(
       `<line x1="${opts.x0_mm}" y1="${this.flipY(opts.y0_mm)}" ` +
         `x2="${opts.x1_mm}" y2="${this.flipY(opts.y1_mm)}" ` +
-        `stroke="${colorToHex(opts.stroke)}" stroke-width="${opts.strokeWidth_mm}"/>`,
+        `stroke="${colorToHex(opts.stroke)}" stroke-width="${opts.strokeWidth_mm}"${dash}/>`,
     );
   }
 

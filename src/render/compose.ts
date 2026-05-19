@@ -46,6 +46,10 @@ const REG_MARK: Color = gray(0.4);
 const PLACEHOLDER_BG: Color = gray(0x22 / 255);
 const PLACEHOLDER_FG: Color = WHITE;
 const CUT_LINE_WIDTH = 0.25;
+/** Dashed pattern (mm) for all cut lines and cut circles. Short dashes
+ *  read as "cut here" rather than "border" — a solid border would look
+ *  like part of the tag. */
+const CUT_LINE_DASH: readonly [number, number] = [1.5, 1];
 const REG_MARK_WIDTH = 0.2;
 const REG_MARK_ARM = 2;
 
@@ -80,6 +84,7 @@ export function composePage(
       y1_mm: c.y1_mm,
       stroke: CUT_LINE,
       strokeWidth_mm: CUT_LINE_WIDTH,
+      dash_mm: CUT_LINE_DASH,
     });
   }
   for (const c of plan.cutCircles) {
@@ -90,6 +95,7 @@ export function composePage(
       radius_mm: c.radius_mm,
       stroke: CUT_LINE,
       strokeWidth_mm: CUT_LINE_WIDTH,
+      dash_mm: CUT_LINE_DASH,
     });
   }
 }
