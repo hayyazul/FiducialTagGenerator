@@ -1,24 +1,18 @@
-# AprilTag &amp; ArUco Generator
+# Fiducial Marker Generator
 
-Free, open, browser-based **AprilTag and ArUco** marker generator. Pick a
+Free, open, browser-based fiducial marker generator. Pick a
 family, choose a tag ID range and a physical size, and the tool packs as
 many tags as fit per page — quiet zones, cut margins, and printable
-boundaries computed correctly. Print-ready PDFs are produced in the
-browser; nothing is uploaded.
+boundaries computed correctly. Print-ready PDFs, PNGs, and SVGs are produced in the
+browser; nothing is uploaded. Currently, AprilTags, ArUco, and CCTags are supported.
 
-**Live site:** https://hayyazul.github.io/AprilTagPDFGenerator/
+**Live site:** https://hayyazul.github.io/ArUcoCCTagAprilTagGenerator/
 
 ## Features
 
-- Multiple AprilTag families: `tag36h11`, `tagStandard41h12`,
-  `tagStandard52h13`, `tagCustom48h12`, plus the circular families
-  `tagCircle21h7` and `tagCircle49h12`.
-- Full ArUco dictionary support: `DICT_4X4`, `DICT_5X5`, `DICT_6X6`,
-  `DICT_7X7` at 50/100/250/1000, the original ArUco dictionary, and the
-  `DICT_APRILTAG_*` AprilTag-compatible variants.
+- Multiple families across various markers.
 - **Recursive / nested tags** — embed a smaller tag inside another tag&rsquo;s
-  center region for multi-scale detection. No other public generator
-  surveyed offers this.
+  center region for multi-scale detection.
 - Hexagonal close-packing for circle families (~15% more tags per page
   than a square grid).
 - Per-tag captions, optional back-side labels, optional in-quiet-zone
@@ -45,9 +39,9 @@ npm run dev
 This starts a development server with hot reload. Open the URL it prints
 in your browser — by default that is:
 
-    http://localhost:5173/AprilTagPDFGenerator/
+    http://localhost:5173/ArUcoCCTagAprilTagGenerator/
 
-The trailing `/AprilTagPDFGenerator/` matters: it matches the GitHub
+The trailing `/ArUcoCCTagAprilTagGenerator/` matters: it matches the GitHub
 Pages `base` path so local URLs behave the same as the deployed site.
 Press `Ctrl+C` in the terminal to stop the server. Edit any source file
 and the page will refresh automatically.
@@ -66,7 +60,7 @@ Pushing to `main` triggers `.github/workflows/deploy.yml`, which lints,
 tests, builds, and publishes `dist/` to GitHub Pages. Enable Pages in the
 repository settings with the source set to &ldquo;GitHub Actions&rdquo;.
 
-The Vite `base` defaults to `/AprilTagPDFGenerator/` (matches the repo
+The Vite `base` defaults to `/ArUcoCCTagAprilTagGenerator/` (matches the repo
 name). Override with the `VITE_BASE` env var if the repo is renamed or
 served from a custom domain root.
 
