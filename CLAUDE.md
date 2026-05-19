@@ -1,9 +1,9 @@
-# CLAUDE.md — AprilTag Generator
+# CLAUDE.md - Fiducial Marker Generator — Originally: AprilTag Generator
 
 ## Project goal
 
 A static, client-side web app (TypeScript, hosted on GitHub Pages, no backend)
-that generates printable PDFs of AprilTags. The user specifies tag family,
+that generates printable PDFs of AprilTags and some other fiducial markers. The user specifies tag family,
 ID range, and physical tag size; the app produces a print-ready PDF along
 with assembly guidance where applicable.
 
@@ -12,10 +12,6 @@ The app must pack as many tags as fit per page after accounting for a quiet zone
 Multi-page (large) tag support is deferred but the architecture must not
 preclude it: a separate layout algorithm will be added later behind the
 same interface.
-
-Source of truth for tag bitmaps is the official `apriltag-imgs` repository.
-The app does not reimplement tag-family math; it scales known-correct
-bitmaps with nearest-neighbor (or emits SVG rectangles directly).
 
 # Improvements and Possible Changes
 
