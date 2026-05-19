@@ -286,7 +286,7 @@ function failPreview(note: string, isProblem = true): void {
 }
 
 function syncDownloadButton(): void {
-  const btn = document.getElementById("downloadPdf") as HTMLButtonElement | null;
+  const btn = document.getElementById("downloadBtn") as HTMLButtonElement | null;
   if (!btn) return;
   let allSubsLoaded = true;
   if (currentPlan) {
@@ -309,35 +309,42 @@ function syncDownloadButton(): void {
 
 async function handleDownload(): Promise<void> {
   if (!currentPlan || !currentFamily || !loadedFamilies.has(currentFamily)) return;
-  const btn = document.getElementById("downloadPdf") as HTMLButtonElement | null;
+  const btn = document.getElementById("downloadBtn") as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   try {
+    const formatMode = (field("downloadFormat") as HTMLSelectElement).value;
+    const [format, mode] = formatMode.split(",") as [
+      "pdf" | "svg" | "png",
+      "packed" | "per-tag",
+    ];
     const printLabelsOnBack =
       (field("printLabelsOnBack") as HTMLInputElement).checked;
     const printLabelsInQuietZone =
       (field("printLabelsInQuietZone") as HTMLInputElement).checked;
-    const { renderPlan } = await import("./render/pdf");
-    const bytes = await renderPlan(currentPlan, bitsProvider, {
-      printLabelsOnBack,
-      printLabelsInQuietZone,
+    const pngDpi = Math.max(
+      72,
+      Math.min(1200, parseInt((field("pngDpi") as HTMLInputElement).value, 10) || 300),
+    );
+    // Lazy-import so the pdf-lib + fflate bundle (~200 KB combined) is not
+    // pulled into the initial page load.
+    const { runExport } = await import("./export");
+    const result = await runExport({
+      plan: currentPlan,
+      markers: bitsProvider,
+      format,
+      mode,
+      options: { printLabelsOnBack, printLabelsInQuietZone, pngDpi },
     });
-    // Copy into a fresh ArrayBuffer-backed Uint8Array; pdf-lib's return type
-    // is `Uint8Array<ArrayBufferLike>` which Blob's typing rejects directly.
-    const buf = new Uint8Array(bytes.length);
-    buf.set(bytes);
-    const blob = new Blob([buf], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(result.blob);
     const a = document.createElement("a");
     a.href = url;
-    const subNames = currentPlan.subtagLevels.map((l) => l.familyName).join("+");
-    const nameParts = subNames ? `${currentFamily}+${subNames}` : currentFamily;
-    a.download = `apriltags-${nameParts}-${currentPlan.placements.length}.pdf`;
+    a.download = result.filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   } catch (e) {
-    showInfo(`PDF render failed: ${e instanceof Error ? e.message : String(e)}`, true);
+    showInfo(`Download failed: ${e instanceof Error ? e.message : String(e)}`, true);
   } finally {
     syncDownloadButton();
   }
@@ -817,7 +824,24 @@ function bootstrap(): void {
             </div>
           </fieldset>
         </form>
-        <p><button id="downloadPdf" type="button" disabled>Download PDF</button></p>
+        <div class="download-row">
+          <label>Download as
+            <select id="downloadFormat">
+              <option value="pdf,packed">PDF</option>
+              <option value="svg,packed">SVG (packed sheet)</option>
+              <option value="svg,per-tag">SVG (one per tag)</option>
+              <option value="png,packed">PNG (packed sheet)</option>
+              <option value="png,per-tag">PNG (one per tag)</option>
+            </select>
+          </label>
+          <button id="downloadBtn" type="button" disabled>Download</button>
+          <details id="downloadAdvanced">
+            <summary>Advanced</summary>
+            <label>PNG resolution
+              <input type="number" id="pngDpi" value="300" min="72" max="1200" step="1" style="width:5em"> DPI
+            </label>
+          </details>
+        </div>
         <div id="info"></div>
     </div>
     <div class="preview-pane">
@@ -830,7 +854,7 @@ function bootstrap(): void {
   document.getElementById("totalSize")?.addEventListener("input", handleTotalSizeInput);
   form?.addEventListener("input", recompute);
   form?.addEventListener("change", recompute);
-  document.getElementById("downloadPdf")?.addEventListener("click", () => {
+  document.getElementById("downloadBtn")?.addEventListener("click", () => {
     void handleDownload();
   });
   recompute();

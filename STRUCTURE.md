@@ -45,6 +45,10 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 | `src/render/bits-to-rgba.ts` | Pure helper: marker bit grid → RGBA pixel buffer (opaque black/white). Shared by `SvgCanvas`'s DOM rasteriser and, eventually, the PNG export backend. |
 | `src/render/bits-to-rgba.test.ts` | Unit tests for `bitsToRgba`: black/white RGBA mapping, row ordering, buffer size. |
 | `src/render/pdf.ts` | Thin PDF orchestrator: embeds fonts, builds the calibration sheet, then for every layout page constructs a `PdfCanvas` and dispatches to `composePage` + footer (and `drawBackPage` if duplex labels are requested). All drawing primitives live in `pdf-canvas.ts` / `pdf-pages.ts`. |
+| `src/render/png-canvas.ts` | `PngCanvas` backend (HTMLCanvasElement 2D at configurable DPI); raster `drawBitGrid` via nearest-neighbour upscale of a 1-px-per-bit scratch canvas. Browser-only. |
+| `src/render/compose-per-tag.ts` | Bare-marker renderer for per-tag SVG/PNG exports — draws a single tag centred with optional quiet zone and caption. Skips the layout pipeline entirely. |
+| `src/export.ts` | Public download API: format × mode dispatch matrix (pdf/svg/png × packed/per-tag), zip bundling via fflate for multi-file outputs, and filename generation. |
+| `src/export.test.ts` | Unit tests for `perTagFilenames` dedup and `runExport` with PDF packed / back-page / rejection of unsupported combinations. |
 | `src/render/pdf.test.ts` | Unit tests for PDF rendering: round-trip parse validation, page sizing, placeholder rendering, back-page generation, circular quiet-zone labels, and subtag support. |
 | `src/tag-caption.ts` | Shared utility producing the one-line tag identification string (e.g. "tag36h11 #5 · 40 mm") and a size formatter, consumed by both renderers. |
 | `src/tag-caption.test.ts` | Unit tests for `formatTagSize` (decimal rounding) and `tagCaptionLine` (combined label output). |
