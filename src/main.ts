@@ -311,9 +311,8 @@ function totalSizeFromTag(s: FormState, familyDef: Family | undefined): number |
 /** Sync derived/dependent fields to the form state:
  *   - quiet zone & cut margin: editable only with the override on; otherwise
  *     refilled with their auto values;
- *   - total size: editable only with the override off (typing into it rescales
- *     the tag size — see `handleTotalSizeInput`); otherwise a read-only mirror
- *     of tag size + quiet zone. Never overwritten while it has focus. */
+ *   - total size: always editable; typing into it rescales tag size (see
+ *     `handleTotalSizeInput`). Never overwritten while it has focus. */
 function syncDependentFields(s: FormState, familyDef: Family | undefined): void {
   const qz = field("quietZone") as HTMLInputElement;
   const cm = field("cutMargin") as HTMLInputElement;
@@ -321,11 +320,6 @@ function syncDependentFields(s: FormState, familyDef: Family | undefined): void 
 
   qz.disabled = !s.overrideAdvanced;
   cm.disabled = !s.overrideAdvanced;
-  total.disabled = s.overrideAdvanced;
-  // The total-size slider mirrors the total-size number input — keep them in
-  // lockstep so toggling the override greys both out together.
-  const totalSlider = document.getElementById("totalSizeSlider") as HTMLInputElement | null;
-  if (totalSlider) totalSlider.disabled = s.overrideAdvanced;
 
   const customRow = document.getElementById("customPaperRow");
   if (customRow) {
@@ -344,13 +338,11 @@ function syncDependentFields(s: FormState, familyDef: Family | undefined): void 
   }
 }
 
-/** When the user edits Total size directly (only possible with the override
- *  off), push the implied tag size back into the Tag size field. For square
- *  families this inverts the tile+2·qz formula; for circle families it
- *  inverts 2·(outerRadius+qz). */
+/** When the user edits Total size directly, push the implied tag size back
+ *  into the Tag size field. For square families this inverts the tile+2·qz
+ *  formula; for circle families it inverts 2·(outerRadius+qz). */
 function handleTotalSizeInput(): void {
   const total = field("totalSize") as HTMLInputElement;
-  if (total.disabled) return;
   const familyDef = getFamily(field("family").value);
   const totalVal = Number.parseFloat(total.value);
   if (!familyDef || !Number.isFinite(totalVal) || totalVal <= 0) return;
@@ -373,10 +365,17 @@ function handleTotalSizeInput(): void {
   }
   const tile = familyDef.geometry.edge;
   if (tile <= 0) return;
-  // Square: Total = tagSize·(tile/wab) + 2·(0.5·tagSize/wab) = tagSize·((tile+1)/wab)
-  (field("tagSize") as HTMLInputElement).value = (
-    (totalVal * wab) / (tile + 1)
-  ).toFixed(2);
+  const override = (field("overrideAdvanced") as HTMLInputElement).checked;
+  let tagSize: number;
+  if (override) {
+    const qz = Number.parseFloat((field("quietZone") as HTMLInputElement).value) || 0;
+    // Total = tagSize·(tile/wab) + 2·qz ⇒ tagSize = (Total − 2·qz) · wab / tile
+    tagSize = Math.max(0, (totalVal - 2 * qz)) * wab / tile;
+  } else {
+    // Total = tagSize·(tile/wab) + 2·(0.5·tagSize/wab) = tagSize·((tile+1)/wab)
+    tagSize = (totalVal * wab) / (tile + 1);
+  }
+  (field("tagSize") as HTMLInputElement).value = tagSize.toFixed(2);
 }
 
 /** Form fields that can carry an inline validation error. Each has a sibling
