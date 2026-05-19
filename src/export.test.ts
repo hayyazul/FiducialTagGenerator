@@ -1,7 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
+import { BitGridMarker, type MarkerProvider } from "./families";
 import { perTagFilenames, runExport } from "./export";
-import type { BitsProvider } from "./families";
 import { planSmallTagLayout } from "./layout/plan";
 import type { LayoutOptions, Paper, TagSpec } from "./layout/types";
 
@@ -12,14 +12,17 @@ const minimalOpts: LayoutOptions = {
   cutMargin_mm: 1,
 };
 
-const fakeBits: BitsProvider = {
-  bits() {
-    return [
-      [true, false, true, false],
-      [false, true, false, true],
-      [true, false, true, false],
-      [false, true, false, true],
-    ];
+const fakeMarker: MarkerProvider = {
+  getMarker() {
+    return new BitGridMarker(
+      [
+        [true, false, true, false],
+        [false, true, false, true],
+        [true, false, true, false],
+        [false, true, false, true],
+      ],
+      "stub#0",
+    );
   },
 };
 
@@ -57,7 +60,7 @@ describe("runExport", () => {
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts);
     const result = await runExport({
       plan,
-      markers: fakeBits,
+      markers: fakeMarker,
       format: "pdf",
       mode: "packed",
     });
@@ -72,7 +75,7 @@ describe("runExport", () => {
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts);
     const result = await runExport({
       plan,
-      markers: fakeBits,
+      markers: fakeMarker,
       format: "pdf",
       mode: "packed",
       options: { printLabelsOnBack: true },
@@ -85,7 +88,7 @@ describe("runExport", () => {
   it("rejects PDF + per-tag — that combination is intentionally unsupported", async () => {
     const plan = planSmallTagLayout(makeTags(2), 20, square100, minimalOpts);
     await expect(
-      runExport({ plan, markers: fakeBits, format: "pdf", mode: "per-tag" }),
+      runExport({ plan, markers: fakeMarker, format: "pdf", mode: "per-tag" }),
     ).rejects.toThrow(/per-tag.*not supported.*PDF/i);
   });
 });

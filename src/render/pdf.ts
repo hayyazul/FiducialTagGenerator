@@ -17,7 +17,7 @@
  * filled rectangle per black cell. No raster image embedding.
  */
 import { PDFDocument } from "pdf-lib";
-import type { BitsProvider } from "../families";
+import type { MarkerProvider } from "../families";
 import type { LayoutPlan } from "../layout/types";
 import { composePage } from "./compose";
 import { PdfCanvas, embedPdfFonts } from "./pdf-canvas";
@@ -40,7 +40,7 @@ export interface RenderOptions {
 
 export async function renderPlan(
   plan: LayoutPlan,
-  bits: BitsProvider,
+  markers: MarkerProvider,
   options: RenderOptions = {},
 ): Promise<Uint8Array> {
   const printBack = options.printLabelsOnBack ?? false;
@@ -59,7 +59,7 @@ export async function renderPlan(
   for (let p = 0; p < plan.pageCount; p++) {
     const layoutPage = doc.addPage([mm(plan.paper.width_mm), mm(plan.paper.height_mm)]);
     const layoutCanvas = new PdfCanvas(layoutPage, fonts, plan.paper.width_mm, plan.paper.height_mm);
-    composePage(plan, p, layoutCanvas, bits, {
+    composePage(plan, p, layoutCanvas, markers, {
       printLabelsInQuietZone: labelInQuietZone,
     });
     drawPageFooter(layoutCanvas, plan, p, false);

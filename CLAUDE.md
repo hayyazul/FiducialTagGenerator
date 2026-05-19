@@ -21,10 +21,7 @@ bitmaps with nearest-neighbor (or emits SVG rectangles directly).
 
 After reviewing other websites which have also made AprilTag generators, I have compiled a list of deficiencies and things to improve, from most important to least:
 
- - The preview region is too small; conversely, the options area takes up too much space.
- - Custom paper dimensions
- -  UI is too plain, even given STYLES.md.
- - Size should be a slider, not an increment (textbox option still stays).
+-  UI is too plain, even given STYLES.md.
 
 # Continuous Summary Updates
 

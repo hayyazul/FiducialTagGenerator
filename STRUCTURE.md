@@ -5,8 +5,13 @@
 A static, client-side TypeScript web app (Vite + pdf-lib) that generates
 printable PDFs of AprilTags. Four layers, each with a single responsibility:
 
-1. **Families** (`src/families/`) — Tag family registry and mosaic bitmap
-   loading. Pure data definitions plus a browser-side PNG decoder.
+1. **Families** (`src/families/`) — Polymorphic marker catalogue. A `Family`
+   exposes markers indexed by integer id; each `Marker` knows how to draw
+   itself onto a `Canvas` via `draw(canvas, frame)`. New marker shapes
+   (bit-grid, vector circles, raster PNG, dot-pattern) add a class — the
+   compose/export layer never inspects internals. Today every shipped family
+   is backed by a PNG mosaic (`MosaicFamily`), but procedural / raster /
+   alias families drop in behind the same interface.
 2. **Layout** (`src/layout/`) — Geometry engine that packs tags onto pages.
    Pure math, no DOM, no rendering. Produces a `LayoutPlan`.
 3. **Rendering** — Two parallel consumers of `LayoutPlan`:
@@ -27,27 +32,30 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 | File | Role |
 |------|------|
 | `src/main.ts` | Application entry point and UI orchestrator: builds the HTML form with recursive sub-tag UI, reads form state, validates inputs, lazy-loads family mosaics, computes the layout plan, renders SVG previews, and triggers PDF download. |
-| `src/families/index.ts` | Tag family registry defining all supported families with their mosaic paths and geometry, plus pure functions for mosaic grid calculation, bit extraction, and circle masks. |
-| `src/families/load.ts` | Browser-side mosaic loader: fetches a family's PNG, decodes it via canvas into grayscale pixels, and returns a `FamilyBitmaps` object with per-tag-id bit-grid lookup. |
-| `src/families/index.test.ts` | Unit tests for family registry functions: mosaic grid math, bit extraction, circle masks, occupied-mask application, and outer-radius measurement. |
+| `src/families/family.ts` | Core abstractions: `Marker` (polymorphic draw), `BitGridMarker` (bit-grid impl), `MarkerProvider` (renderer seam), `Family` (catalogue + lifecycle), `FamilyGeometry` (static per-family shape). |
+| `src/families/index.ts` | Module-level registry: instantiates one `MosaicFamily` per shipped family, exposes `getFamily` / `listFamilies` / `listFamilyNames` / `listFamiliesByGroup` / `isRecursiveFamily`. |
+| `src/families/mosaic-bits.ts` | Pure helpers for the AprilTag mosaic format: `mosaicGrid`, `extractTagBits`, `circleOccupiedMask`, `applyCircleMask`, `outerRadiusModulesFor`. Decoupled from the family object model. |
+| `src/families/mosaic-bits.test.ts` | Unit tests for mosaic-bits pure helpers: grid math, bit extraction from synthetic pixel buffers, circle masks, outer-radius measurement. |
+| `src/families/mosaic-family.ts` | `MosaicFamily` (`Family` impl): fetches a PNG mosaic, decodes via 2D canvas, extracts + caches `BitGridMarker`s on demand. Replaces the old `load.ts`. |
+| `src/families/mosaic-family.test.ts` | Unit tests for `MosaicFamily`: lifecycle (load idempotency, getMarker-before-load error), getMarker caching, RangeError on out-of-range id, circle-mask application. |
 | `src/ids.ts` | Pure parser for tag-ID range specifications (e.g. "0-9, 12, 15-20"), producing an ordered array of integer IDs with validation. |
 | `src/ids.test.ts` | Unit tests for `parseTagIdSpec`: single IDs, ranges, mixed input, whitespace, backwards ranges, duplicates, malformed tokens, and oversized ranges. |
 | `src/layout/types.ts` | Domain types for the layout engine: `TagSpec`, `Paper`, `LayoutOptions` (including the `packingStrategy` choice), `Placement`, `CutSegment`, `CutCircle`, and `LayoutPlan` — all in millimetres with bottom-left origin. |
 | `src/layout/plan.ts` | Layout planner: packs tags onto pages under the selected strategy (`grid` for squares, hexagonal close-packing for circles by default); computes placements, cut geometry, and page count. |
 | `src/layout/plan.test.ts` | Unit tests for the layout planner: grid and hex capacity, cut-segment generation, circle-plan geometry, hex-lattice invariants, and `maxTagSizeForCount` bounds under each strategy. |
-| `src/preview/svg.ts` | Thin wrapper around `compose.composePage` + `SvgCanvas` for the live preview; adds the preview-only root `<svg>` chrome (border, display:block) and accepts a stub `BitGridRasterizer` for tests. |
+| `src/preview/svg.ts` | Thin wrapper around `compose.composePage` + `SvgCanvas` for the live preview: constructs an `SvgCanvas`, dispatches to `composePage` with a `MarkerProvider`, adds preview-only root `<svg>` chrome. |
 | `src/preview/svg.test.ts` | Unit tests for SVG rendering: placeholder fallback, image rendering, XML escaping, colour/style invariants, registration marks, circle output, sub-tag overlays, and curved quiet-zone text. |
 | `src/render/canvas.ts` | The `Canvas` interface used by `compose.composePage` and implemented by `SvgCanvas` and `PdfCanvas` (and, eventually, `PngCanvas`). Coordinate convention: millimetres, bottom-left origin. Stateless calls; style is per-call. |
 | `src/render/svg-canvas.ts` | `SvgCanvas` backend (SVG-string builder) and `createDomRasterizer` (DOM-backed bit-grid → PNG data URI helper used by the live preview). |
 | `src/render/pdf-canvas.ts` | `PdfCanvas` backend (pdf-lib-backed) and `embedPdfFonts` (pre-embeds the six StandardFonts so `drawText` can stay synchronous). |
 | `src/render/pdf-pages.ts` | PDF-only page generators that don't go through `composePage`: calibration sheet, mirrored back-label sheet, and the small per-page footer. All emit through the shared `Canvas` interface. |
-| `src/render/compose.ts` | Single renderer pass: walks one page of a `LayoutPlan` and emits canvas calls (background, registration marks, placements with recursive sub-tags, optional quiet-zone captions, cut lines/circles). Masks a parent tag's centre-block when a sub-tag covers it so vector backends don't overdraw. Backend-agnostic. |
+| `src/render/compose.ts` | Backend-agnostic renderer: walks one page of a `LayoutPlan` and calls `marker.draw(canvas, frame)` via `MarkerProvider`. Handles registration marks, recursive sub-tags (centre-block masking), quiet-zone captions, and cut lines/circles. |
 | `src/render/bits-to-rgba.ts` | Pure helper: marker bit grid → RGBA pixel buffer (opaque black/white). Shared by `SvgCanvas`'s DOM rasteriser and, eventually, the PNG export backend. |
 | `src/render/bits-to-rgba.test.ts` | Unit tests for `bitsToRgba`: black/white RGBA mapping, row ordering, buffer size. |
-| `src/render/pdf.ts` | Thin PDF orchestrator: embeds fonts, builds the calibration sheet, then for every layout page constructs a `PdfCanvas` and dispatches to `composePage` + footer (and `drawBackPage` if duplex labels are requested). All drawing primitives live in `pdf-canvas.ts` / `pdf-pages.ts`. |
+| `src/render/pdf.ts` | PDF orchestrator: embeds fonts, builds calibration sheet, then for every layout page constructs a `PdfCanvas` and dispatches to `composePage` with a `MarkerProvider` + footer/back-page. |
 | `src/render/png-canvas.ts` | `PngCanvas` backend (HTMLCanvasElement 2D at configurable DPI); raster `drawBitGrid` via nearest-neighbour upscale of a 1-px-per-bit scratch canvas. Browser-only. |
-| `src/render/compose-per-tag.ts` | Bare-marker renderer for per-tag SVG/PNG exports — draws a single tag centred with optional quiet zone and caption. Skips the layout pipeline entirely. |
-| `src/export.ts` | Public download API: format × mode dispatch matrix (pdf/svg/png × packed/per-tag), zip bundling via fflate for multi-file outputs, and filename generation. |
+| `src/render/compose-per-tag.ts` | Bare-marker renderer for per-tag SVG/PNG exports — draws a single marker via `marker.draw()` centred with optional quiet zone and caption. Shares the same `MarkerProvider` seam as `composePage`. |
+| `src/export.ts` | Public download API: format × mode dispatch (pdf/svg/png × packed/per-tag), zip bundling via fflate. Takes a `MarkerProvider` and forwards it to composePage/composePerTag. |
 | `src/export.test.ts` | Unit tests for `perTagFilenames` dedup and `runExport` with PDF packed / back-page / rejection of unsupported combinations. |
 | `src/render/pdf.test.ts` | Unit tests for PDF rendering: round-trip parse validation, page sizing, placeholder rendering, back-page generation, circular quiet-zone labels, and subtag support. |
 | `src/tag-caption.ts` | Shared utility producing the one-line tag identification string (e.g. "tag36h11 #5 · 40 mm") and a size formatter, consumed by both renderers. |
@@ -95,7 +103,7 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 
 | File | Role |
 |------|------|
-| `docs/superpowers/specs/2026-05-18-family-abstraction-design.md` | Architectural design spec: replace the mosaic-only family layer with a `Family` interface that hides mosaic vs procedural vs alias backings (forcing function: ArUco). |
+| `docs/superpowers/specs/2026-05-18-family-abstraction-design.md` | (Pre-Canvas-refactor) Architectural design spec for the family abstraction now implemented. The actual implementation diverged in Marker shape (polymorphic draw vs union) to accommodate non-bit-grid families. |
 | `docs/superpowers/specs/2026-05-18-canvas-and-exports-design.md` | Architectural design spec: collapse the duplicated PDF and SVG drawing code behind a `Canvas` interface and add packed / per-tag SVG and PNG exports. |
 
 ### CI/CD

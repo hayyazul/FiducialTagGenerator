@@ -9,7 +9,7 @@
  * page dimensions equal `perTagCanvasSize_mm(...)` for the inputs it
  * wants to render.
  */
-import { type BitsProvider, getFamily } from "../families";
+import { BitGridMarker, type Family, getFamily, type MarkerProvider } from "../families";
 import type { SubtagLevel, TagSpec } from "../layout/types";
 import { formatTagSize, tagCaptionLine } from "../tag-caption";
 import { BLACK, type Canvas, WHITE } from "./canvas";
@@ -47,7 +47,7 @@ export function perTagCanvasSize_mm(opts: {
  */
 export function composePerTag(
   canvas: Canvas,
-  markers: BitsProvider,
+  markers: MarkerProvider,
   tag: TagSpec,
   opts: PerTagOptions,
 ): void {
@@ -79,74 +79,49 @@ export function composePerTag(
  *  a sub-tag will cover them, for vector-backend cleanliness. */
 function drawMarkerAt(
   canvas: Canvas,
-  markers: BitsProvider,
+  markers: MarkerProvider,
   tag: TagSpec,
   x_mm: number,
   y_mm: number,
-  tile_mm: number,
+  size_mm: number,
 ): void {
-  const def = getFamily(tag.family);
-  const bits = markers.bits(tag.family, tag.id);
+  const def: Family | undefined = getFamily(tag.family);
+  const marker = markers.getMarker(tag.family, tag.id);
 
-  if (bits === null || bits.length === 0) {
+  if (marker === null) {
     canvas.drawRect({
       x_mm,
       y_mm,
-      width_mm: tile_mm,
-      height_mm: tile_mm,
+      width_mm: size_mm,
+      height_mm: size_mm,
       fill: { r: 0x22 / 255, g: 0x22 / 255, b: 0x22 / 255 },
     });
     canvas.drawText({
       text: `${tag.family}#${tag.id}`,
-      x_mm: x_mm + tile_mm / 2,
-      y_mm: y_mm + tile_mm / 2,
-      fontSize_mm: Math.max(1.2, tile_mm * 0.18),
+      x_mm: x_mm + size_mm / 2,
+      y_mm: y_mm + size_mm / 2,
+      fontSize_mm: Math.max(1.2, size_mm * 0.18),
       font: "mono",
       fill: WHITE,
       anchor: "middle",
       verticalAnchor: "middle",
     });
   } else {
-    const cb = tag.subtag ? def?.centerBlock : undefined;
-    const drawBits = cb ? maskCenterBlock(bits, cb) : bits;
-    canvas.drawBitGrid({
-      bits: drawBits,
-      x_mm,
-      y_mm,
-      cellSize_mm: tile_mm / bits.length,
-      cacheKey: cb
-        ? `${tag.family}#${tag.id}+sub`
-        : `${tag.family}#${tag.id}`,
-    });
+    const cb = tag.subtag ? def?.geometry.centerBlock : undefined;
+    const drawMarker =
+      cb && marker instanceof BitGridMarker
+        ? marker.withMaskedCenterBlock(cb)
+        : marker;
+    drawMarker.draw(canvas, { x_mm, y_mm, size_mm });
   }
 
-  if (!tag.subtag || !def?.centerBlock) return;
-  const cb = def.centerBlock;
-  const module_mm = tile_mm / def.tileSize_px;
-  const subTile_mm = cb.size * module_mm;
-  const subX = x_mm + cb.col * module_mm;
-  const subY = y_mm + tile_mm - (cb.row + cb.size) * module_mm;
-  drawMarkerAt(canvas, markers, tag.subtag, subX, subY, subTile_mm);
-}
-
-function maskCenterBlock(
-  bits: readonly (readonly boolean[])[],
-  cb: { row: number; col: number; size: number },
-): boolean[][] {
-  const out: boolean[][] = [];
-  for (let r = 0; r < bits.length; r++) {
-    const row = bits[r]!;
-    if (r < cb.row || r >= cb.row + cb.size) {
-      out.push([...row]);
-      continue;
-    }
-    const next: boolean[] = [];
-    for (let c = 0; c < row.length; c++) {
-      next.push(c >= cb.col && c < cb.col + cb.size ? false : row[c]!);
-    }
-    out.push(next);
-  }
-  return out;
+  if (!tag.subtag || !def?.geometry.centerBlock) return;
+  const cb = def.geometry.centerBlock;
+  const cell_mm = size_mm / def.geometry.edge;
+  const subSize_mm = cb.size * cell_mm;
+  const subX = x_mm + cb.col * cell_mm;
+  const subY = y_mm + size_mm - (cb.row + cb.size) * cell_mm;
+  drawMarkerAt(canvas, markers, tag.subtag, subX, subY, subSize_mm);
 }
 
 function drawCaption(

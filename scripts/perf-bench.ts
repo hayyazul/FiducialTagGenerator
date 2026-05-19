@@ -6,17 +6,17 @@
  *
  * Run with:   npx vite-node scripts/perf-bench.ts
  *
- * The SVG/PDF benches use a *synthetic* BitsProvider (a checkerboard) so the
- * numbers reflect rendering cost only, independent of mosaic decode time.
+ * The SVG/PDF benches use a *synthetic* MarkerProvider (a checkerboard) so
+ * the numbers reflect rendering cost only, independent of mosaic decode time.
  * Decode time is measured separately by counting the bits in a fixed-size
  * synthetic mosaic.
  */
 import { performance } from "node:perf_hooks";
+import { BitGridMarker, type MarkerProvider } from "../src/families";
 import { planSmallTagLayout } from "../src/layout/plan";
 import type { LayoutOptions, Paper, TagSpec } from "../src/layout/types";
-import { renderPlanToSvg, type TagImageProvider } from "../src/preview/svg";
+import { renderPlanToSvg } from "../src/preview/svg";
 import { renderPlan } from "../src/render/pdf";
-import type { BitsProvider } from "../src/families";
 
 const A4: Paper = { width_mm: 210, height_mm: 297 };
 const OPTS: LayoutOptions = {
@@ -28,24 +28,13 @@ const OPTS: LayoutOptions = {
 // 8x8 bit grid for tag36h11 (6x6 data + 1-module border). Black/white
 // checkerboard fills the same number of rectangles a real tag would draw.
 const EDGE = 8;
-const FAKE_BITS: boolean[][] = Array.from({ length: EDGE }, (_, r) =>
+const FAKE_MARKER: boolean[][] = Array.from({ length: EDGE }, (_, r) =>
   Array.from({ length: EDGE }, (_, c) => ((r + c) & 1) === 0),
 );
 
-const BITS: BitsProvider = {
-  bits(_family: string, _id: number) {
-    return FAKE_BITS;
-  },
-};
-
-// Stand-in for the canvas-backed provider used in the browser: a fixed PNG
-// data URI roughly the size a real 8x8 tag PNG would base64 to. The point of
-// the SVG bench is to measure string-building / element count, not rasterising.
-const FAKE_TAG_PNG =
-  "data:image/png;base64," + "A".repeat(120);
-const IMAGES: TagImageProvider = {
-  imageHref(_family: string, _id: number) {
-    return FAKE_TAG_PNG;
+const MARKER: MarkerProvider = {
+  getMarker(_family: string, _id: number) {
+    return new BitGridMarker(FAKE_MARKER, "bench#0");
   },
 };
 
@@ -105,7 +94,7 @@ async function run(): Promise<void> {
     const tags = makeTags(n);
     const plan = planSmallTagLayout(tags, 40, A4, OPTS);
     await bench(`svg ${label}`, () => {
-      renderPlanToSvg(plan, 0, IMAGES);
+      renderPlanToSvg(plan, 0, MARKER);
     });
   }
 
@@ -115,7 +104,7 @@ async function run(): Promise<void> {
     const plan = planSmallTagLayout(tags, 40, A4, OPTS);
     await bench(`svg ALL pages, ${n} tags`, () => {
       let s = "";
-      for (let p = 0; p < plan.pageCount; p++) s += renderPlanToSvg(plan, p, IMAGES);
+      for (let p = 0; p < plan.pageCount; p++) s += renderPlanToSvg(plan, p, MARKER);
       return s;
     });
   }
@@ -144,7 +133,7 @@ async function run(): Promise<void> {
     }
     let svgLen = 0;
     await bench(`svg ${n} tags on 1 page (${tagSize}mm)`, () => {
-      const s = renderPlanToSvg(plan, 0, IMAGES);
+      const s = renderPlanToSvg(plan, 0, MARKER);
       svgLen = s.length;
       return s;
     });
@@ -160,7 +149,7 @@ async function run(): Promise<void> {
     await bench(
       `pdf ${n} tags`,
       async () => {
-        const bytes = await renderPlan(plan, BITS);
+        const bytes = await renderPlan(plan, MARKER);
         return bytes.length;
       },
       5,
@@ -174,7 +163,7 @@ async function run(): Promise<void> {
     await bench(
       `pdf+back ${n} tags`,
       async () => {
-        const bytes = await renderPlan(plan, BITS, { printLabelsOnBack: true });
+        const bytes = await renderPlan(plan, MARKER, { printLabelsOnBack: true });
         return bytes.length;
       },
       5,
@@ -185,8 +174,8 @@ async function run(): Promise<void> {
   for (const n of [20, 200, 587]) {
     const tags = makeTags(n);
     const plan = planSmallTagLayout(tags, 40, A4, OPTS);
-    const front = await renderPlan(plan, BITS);
-    const both = await renderPlan(plan, BITS, { printLabelsOnBack: true });
+    const front = await renderPlan(plan, MARKER);
+    const both = await renderPlan(plan, MARKER, { printLabelsOnBack: true });
     console.log(
       `  ${n} tags`.padEnd(50) +
         `front=${(front.length / 1024).toFixed(1)}KB  ` +

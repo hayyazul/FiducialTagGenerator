@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BitsProvider } from "../families";
+import { BitGridMarker, type MarkerProvider } from "../families";
 import { planSmallTagLayout, type CutShape } from "../layout/plan";
 import type { LayoutOptions, Paper } from "../layout/types";
 import type { BitGridRasterizer } from "../render/svg-canvas";
@@ -13,9 +13,11 @@ const minimalOpts: LayoutOptions = {
 };
 
 const HREF = "data:image/png;base64,AAAA";
-const stubBits: BitsProvider = { bits: (): boolean[][] => [[true]] };
+const stubMarker: MarkerProvider = {
+  getMarker: (): BitGridMarker => new BitGridMarker([[true]], "stub#0"),
+};
 const stubRasterizer: BitGridRasterizer = { rasterize: (): string => HREF };
-const everyBitNull: BitsProvider = { bits: (): null => null };
+const everyMarkerNull: MarkerProvider = { getMarker: (): null => null };
 
 describe("renderPlanToSvg", () => {
   it("falls back to a labelled placeholder per tag when no marker provider is given", () => {
@@ -49,7 +51,7 @@ describe("renderPlanToSvg", () => {
       square100,
       minimalOpts,
     );
-    const svg = renderPlanToSvg(plan, 0, stubBits, { rasterizer: stubRasterizer });
+    const svg = renderPlanToSvg(plan, 0, stubMarker, { rasterizer: stubRasterizer });
     const imageCount = (svg.match(/<image /g) ?? []).length;
     expect(imageCount).toBe(2);
     expect(svg).toContain(`href="${HREF}"`);
@@ -65,7 +67,7 @@ describe("renderPlanToSvg", () => {
       square100,
       minimalOpts,
     );
-    const svg = renderPlanToSvg(plan, 0, everyBitNull, { rasterizer: stubRasterizer });
+    const svg = renderPlanToSvg(plan, 0, everyMarkerNull, { rasterizer: stubRasterizer });
     expect(svg).toContain("fill=\"#222222\"");
     expect(svg).not.toContain("<image ");
   });
@@ -110,7 +112,7 @@ describe("renderPlanToSvg", () => {
   it("draws no caption in the cut band — that text was removed when cut margin became a paper gap", () => {
     const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 1, cutMargin_mm: 2 };
     const plan = planSmallTagLayout([{ family: "tag36h11", id: 7 }], 20, square100, opts);
-    const svg = renderPlanToSvg(plan, 0, stubBits, { rasterizer: stubRasterizer });
+    const svg = renderPlanToSvg(plan, 0, stubMarker, { rasterizer: stubRasterizer });
     expect(svg).not.toContain("tag36h11 #7");
     expect(svg).not.toContain(`fill="#4d4d4d"`);
   });
@@ -119,9 +121,9 @@ describe("renderPlanToSvg", () => {
     const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 1, cutMargin_mm: 0 };
     const plan = planSmallTagLayout([{ family: "tag36h11", id: 5 }], 20, square100, opts);
     expect(
-      renderPlanToSvg(plan, 0, stubBits, { rasterizer: stubRasterizer }),
+      renderPlanToSvg(plan, 0, stubMarker, { rasterizer: stubRasterizer }),
     ).not.toContain("tag36h11 #5 · 20 mm");
-    const svg = renderPlanToSvg(plan, 0, stubBits, {
+    const svg = renderPlanToSvg(plan, 0, stubMarker, {
       rasterizer: stubRasterizer,
       printLabelsInQuietZone: true,
     });
@@ -132,7 +134,7 @@ describe("renderPlanToSvg", () => {
   it("draws no quiet-zone caption when there is no quiet zone, even with the option on", () => {
     const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 0, cutMargin_mm: 0 };
     const plan = planSmallTagLayout([{ family: "tag36h11", id: 5 }], 20, square100, opts);
-    const svg = renderPlanToSvg(plan, 0, stubBits, {
+    const svg = renderPlanToSvg(plan, 0, stubMarker, {
       rasterizer: stubRasterizer,
       printLabelsInQuietZone: true,
     });
@@ -147,7 +149,7 @@ describe("renderPlanToSvg", () => {
       square100,
       opts,
     );
-    const svg = renderPlanToSvg(plan, 0, stubBits, {
+    const svg = renderPlanToSvg(plan, 0, stubMarker, {
       rasterizer: stubRasterizer,
       printLabelsInQuietZone: true,
     });
@@ -165,7 +167,7 @@ describe("renderPlanToSvg", () => {
       opts,
     );
     plan.subtagLevels = [{ familyName: "tag36h11", tileSize_mm: 4, tagSize_mm: 3.2 }];
-    const svg = renderPlanToSvg(plan, 0, stubBits, {
+    const svg = renderPlanToSvg(plan, 0, stubMarker, {
       rasterizer: stubRasterizer,
       printLabelsInQuietZone: true,
     });
@@ -182,7 +184,7 @@ describe("renderPlanToSvg", () => {
       20,
       circleShape,
     );
-    const svg = renderPlanToSvg(plan, 0, stubBits, {
+    const svg = renderPlanToSvg(plan, 0, stubMarker, {
       rasterizer: stubRasterizer,
       printLabelsInQuietZone: true,
     });
@@ -206,7 +208,7 @@ describe("renderPlanToSvg", () => {
       20,
       circleShape,
     );
-    const svg = renderPlanToSvg(plan, 0, stubBits, {
+    const svg = renderPlanToSvg(plan, 0, stubMarker, {
       rasterizer: stubRasterizer,
       printLabelsInQuietZone: true,
     });
@@ -269,7 +271,7 @@ describe("renderPlanToSvg", () => {
       square100,
       minimalOpts,
     );
-    const svg = renderPlanToSvg(plan, 0, stubBits, { rasterizer: stubRasterizer });
+    const svg = renderPlanToSvg(plan, 0, stubMarker, { rasterizer: stubRasterizer });
     // Two images: one for the outer tag, one for the sub-tag overlay.
     const imageCount = (svg.match(/<image /g) ?? []).length;
     expect(imageCount).toBe(2);
@@ -282,7 +284,7 @@ describe("renderPlanToSvg", () => {
       square100,
       minimalOpts,
     );
-    const svg = renderPlanToSvg(plan, 0, stubBits, { rasterizer: stubRasterizer });
+    const svg = renderPlanToSvg(plan, 0, stubMarker, { rasterizer: stubRasterizer });
     const imageCount = (svg.match(/<image /g) ?? []).length;
     expect(imageCount).toBe(1);
   });
@@ -297,7 +299,7 @@ describe("renderPlanToSvg", () => {
       square100,
       minimalOpts,
     );
-    const svg = renderPlanToSvg(plan, 0, stubBits, { rasterizer: stubRasterizer });
+    const svg = renderPlanToSvg(plan, 0, stubMarker, { rasterizer: stubRasterizer });
     // Three images: outer + level 1 subtag + level 2 subtag.
     const imageCount = (svg.match(/<image /g) ?? []).length;
     expect(imageCount).toBe(3);
