@@ -90,11 +90,19 @@ interface FormState {
   idSpec: string;
   tagSize_mm: number;
   paperKey: string;
+  paperWidth_mm: number;
+  paperHeight_mm: number;
   pageMargin_mm: number;
   overrideAdvanced: boolean;
   quietZone_mm: number;
   cutMargin_mm: number;
 }
+
+/** Bounds for custom paper dimensions. 50 mm is roughly a postage stamp;
+ *  1200 mm covers oversize plotter paper. Values outside this range are
+ *  almost certainly typos rather than legitimate input. */
+const CUSTOM_PAPER_MIN_MM = 50;
+const CUSTOM_PAPER_MAX_MM = 1200;
 
 const loadedFamilies = new Map<string, FamilyBitmaps>();
 
@@ -148,6 +156,8 @@ function readForm(): FormState {
     idSpec: field("ids").value,
     tagSize_mm: Number.parseFloat(field("tagSize").value),
     paperKey: field("paper").value,
+    paperWidth_mm: Number.parseFloat(field("paperWidth").value),
+    paperHeight_mm: Number.parseFloat(field("paperHeight").value),
     pageMargin_mm: Number.parseFloat(field("pageMargin").value),
     overrideAdvanced: (field("overrideAdvanced") as HTMLInputElement).checked,
     quietZone_mm: Number.parseFloat(field("quietZone").value),
@@ -190,6 +200,11 @@ function syncDependentFields(s: FormState, familyDef: TagFamilyDef | undefined):
   qz.disabled = !s.overrideAdvanced;
   cm.disabled = !s.overrideAdvanced;
   total.disabled = s.overrideAdvanced;
+
+  const customRow = document.getElementById("customPaperRow");
+  if (customRow) {
+    customRow.style.display = s.paperKey === "custom" ? "" : "none";
+  }
 
   if (!s.overrideAdvanced) {
     const auto = familyDef ? deriveQuietZone_mm(s.tagSize_mm, familyDef) : 0;
@@ -245,6 +260,8 @@ const ERROR_FIELD_IDS = [
   "ids",
   "tagSize",
   "totalSize",
+  "paperWidth",
+  "paperHeight",
   "pageMargin",
   "quietZone",
   "cutMargin",
@@ -419,6 +436,25 @@ function recompute(): void {
       bad = true;
     }
   }
+  if (effective.paperKey === "custom") {
+    const range = `${CUSTOM_PAPER_MIN_MM}–${CUSTOM_PAPER_MAX_MM} mm.`;
+    if (
+      !Number.isFinite(effective.paperWidth_mm) ||
+      effective.paperWidth_mm < CUSTOM_PAPER_MIN_MM ||
+      effective.paperWidth_mm > CUSTOM_PAPER_MAX_MM
+    ) {
+      setFieldError("paperWidth", `Enter ${range}`);
+      bad = true;
+    }
+    if (
+      !Number.isFinite(effective.paperHeight_mm) ||
+      effective.paperHeight_mm < CUSTOM_PAPER_MIN_MM ||
+      effective.paperHeight_mm > CUSTOM_PAPER_MAX_MM
+    ) {
+      setFieldError("paperHeight", `Enter ${range}`);
+      bad = true;
+    }
+  }
   const maxId = tagIds.reduce((m, x) => Math.max(m, x), 0);
   if (maxId >= familyDef.validTagCount) {
     setFieldError(
@@ -445,7 +481,10 @@ function recompute(): void {
     id,
     subtag: subtagResult.subtagForIndex(i),
   }));
-  const paper = PAPERS[effective.paperKey] ?? PAPERS.A4!;
+  const paper: Paper =
+    effective.paperKey === "custom"
+      ? { width_mm: effective.paperWidth_mm, height_mm: effective.paperHeight_mm }
+      : (PAPERS[effective.paperKey] ?? PAPERS.A4!);
   const options: LayoutOptions = {
     pageMargin_mm: effective.pageMargin_mm,
     quietZone_mm: effective.quietZone_mm,
@@ -780,8 +819,18 @@ function bootstrap(): void {
                 <option value="A4" selected>A4 (210 × 297 mm)</option>
                 <option value="Letter">US Letter (215.9 × 279.4 mm)</option>
                 <option value="Square100">100 × 100 mm</option>
+                <option value="custom">Custom…</option>
               </select>
             </label>
+            <div id="customPaperRow" style="display:none;margin-top:0.35rem">
+              <label>Width (mm)
+                <input id="paperWidth" type="number" value="210" step="1" min="${CUSTOM_PAPER_MIN_MM}" max="${CUSTOM_PAPER_MAX_MM}" style="width:5em"><span class="field-error" id="paperWidth-err"></span>
+              </label>
+              <label>Height (mm)
+                <input id="paperHeight" type="number" value="297" step="1" min="${CUSTOM_PAPER_MIN_MM}" max="${CUSTOM_PAPER_MAX_MM}" style="width:5em"><span class="field-error" id="paperHeight-err"></span>
+              </label>
+              <span style="color:#888;font-size:0.85em">${CUSTOM_PAPER_MIN_MM}–${CUSTOM_PAPER_MAX_MM} mm each side</span>
+            </div>
           </fieldset>
           <fieldset>
             <legend>Tag</legend>
