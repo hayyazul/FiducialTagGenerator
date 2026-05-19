@@ -1072,23 +1072,28 @@ function bootstrap(): void {
 }
 
 /** Temporary debug control. The bar at the top of the page exposes the
- *  per-page width as a percentage of the preview pane (`--page-size`). At
- *  100 each page fills the row; below ~50 two pages fit side by side with
- *  a small gap. Mirrors slider ↔ number ↔ computed columns readout. Will
- *  be removed once the right size is locked in. */
+ *  upper bound on each preview page's width (`--page-max-width`, px). Pages
+ *  render at this width when there's room, shrink to fit narrower preview
+ *  panes, and wrap onto multiple rows when the pane has room for them.
+ *  Mirrors slider ↔ number ↔ computed columns readout. Will be removed
+ *  once the right value is locked in. */
 function wireDebugPageSize(): void {
   const slider = document.getElementById("debugPageSize") as HTMLInputElement | null;
   const num = document.getElementById("debugPageSizeNum") as HTMLInputElement | null;
   const out = document.getElementById("debugPageInfo");
   if (!slider || !num || !out) return;
+  const previewPane = document.querySelector<HTMLElement>(".preview-pane");
   const apply = (value: string): void => {
     const v = Number.parseFloat(value);
-    if (!Number.isFinite(v) || v <= 0 || v > 100) return;
-    document.documentElement.style.setProperty("--page-size", String(v));
-    // Each page takes (v - 0.25rem) of the row; with the 0.5rem flex gap the
-    // count that fits is floor((100 + gap%) / (v + gap%)). Treat 0.5rem ≈ 0.5%.
-    const cols = Math.max(1, Math.floor(100.5 / (v + 0.5)));
-    out.textContent = `→ ${v}% wide · ${cols} page${cols === 1 ? "" : "s"} per row`;
+    if (!Number.isFinite(v) || v <= 0) return;
+    document.documentElement.style.setProperty("--page-max-width", `${v}px`);
+    // How many pages fit in the current preview pane width at this max-width?
+    const paneWidth = previewPane?.clientWidth ?? 0;
+    const gapPx = 8; // matches gap: 0.5rem (≈ 8 px at default 16 px root)
+    const cols = paneWidth > 0
+      ? Math.max(1, Math.floor((paneWidth + gapPx) / (v + gapPx)))
+      : 1;
+    out.textContent = `→ ${v}px max · ${cols} page${cols === 1 ? "" : "s"} per row (pane ${paneWidth}px)`;
   };
   slider.addEventListener("input", () => {
     num.value = slider.value;
@@ -1098,6 +1103,8 @@ function wireDebugPageSize(): void {
     slider.value = num.value;
     apply(num.value);
   });
+  // Re-evaluate the columns readout when the viewport resizes.
+  window.addEventListener("resize", () => apply(slider.value));
   apply(slider.value);
 }
 

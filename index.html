@@ -51,11 +51,12 @@
       /* Form-pane gets flex-grow 1.2, preview gets 2 — preview is the focus
          of the tool, but the form needs enough room to fit two inputs and a
          slider on the same row. Locked from interactive tuning. */
-      /* --page-size is the width of each preview page as a percentage of
-         the preview pane; controlled by the debug bar so the user can find
-         a comfortable size. At 100 the page fills the pane (one column);
-         drop it under 50 and a second page fits beside the first. */
-      :root { --page-size: 100; }
+      /* --page-max-width is an upper bound on each preview page in px. Pages
+         render at this width when there's room, shrink to fit narrower
+         preview panes, and wrap so multiple fit side by side when there's
+         room for them. Controlled by the debug bar; the right value is
+         baked in once it's chosen. */
+      :root { --page-max-width: 540px; }
       .debug-bar { padding: 0.4rem 1rem; border-bottom: 1px solid #eee;
                    font-size: 0.85rem; color: #555; flex: 0 0 auto;
                    display: flex; align-items: center; gap: 0.5rem;
@@ -88,15 +89,17 @@
                       background-repeat: no-repeat;
                       background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
                       background-attachment: local, local, scroll, scroll; }
-      /* Pages are flex items: they wrap when there's room and stay centered
-         in the preview pane. --page-size is a percentage of the pane width;
-         at 100 a page fills the row, at ~48 two fit side-by-side with a gap. */
+      /* Pages are flex items with a fixed upper-bound width, wrapping and
+         centred in the preview pane. Multiple pages fit side by side when
+         the pane has room; narrower panes shrink the page (max-width: 100%)
+         and eventually wrap to a single column. Below the stacked-layout
+         breakpoint, the preview moves below the form entirely. */
       .preview-pane #preview { display: flex; flex-wrap: wrap;
                                justify-content: center; align-content: flex-start;
                                gap: 0.5rem; margin: 0 auto;
                                max-width: min(100%, 1600px); }
       .preview-pane #preview > section {
-        flex: 0 0 calc(var(--page-size) * 1% - 0.25rem);
+        width: var(--page-max-width);
         max-width: 100%;
         margin: 0;
         min-width: 0;
@@ -219,14 +222,16 @@
       <h1>ArUco and AprilTag Generator</h1>
       <p class="tagline">Generate ready-to-print AprilTags and ArUco markers as PDFs. Free, opensource, browser-based, with built-in support for recursive nested tags.</p>
     </header>
-    <!-- TEMPORARY: preview page-size debug control. The slider sets each
-         preview page's width as a percentage of the preview pane. At 100
-         one page fills the row; below ~50 two pages fit side by side. Use
-         this to find the ideal size, then we'll bake it in and remove. -->
+    <!-- TEMPORARY: preview page max-width debug control. The slider sets
+         the upper bound on each preview page's width in px. Pages render
+         at this width when there's room; the preview pane wraps multiple
+         pages onto the same row when it can, and shrinks them below this
+         bound when the pane is narrower. Use this to find the ideal size,
+         then we'll bake it in and remove the bar. -->
     <div class="debug-bar" id="debugBar">
-      <label for="debugPageSize">DEBUG · page size %</label>
-      <input type="range" id="debugPageSize" class="slider" min="40" max="100" step="1" value="100">
-      <input type="number" id="debugPageSizeNum" min="40" max="100" step="1" value="100">
+      <label for="debugPageSize">DEBUG · page max-width (px)</label>
+      <input type="range" id="debugPageSize" class="slider" min="240" max="1000" step="10" value="540">
+      <input type="number" id="debugPageSizeNum" min="240" max="1000" step="10" value="540">
       <span class="computed" id="debugPageInfo"></span>
     </div>
     <main id="app"></main>
