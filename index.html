@@ -49,9 +49,12 @@
       .site-header h1 { margin: 0; font-size: 1.2rem; font-weight: 600; }
       .site-header .tagline { margin: 0.15rem 0 0; color: #555; font-size: 0.88rem; }
       #app { flex: 0 0 auto; height: calc(100vh - 4.5rem); display: flex; }
-      .form-pane { flex: 1; padding: 0.75rem 1rem;
-                   overflow-y: auto; box-sizing: border-box; }
-      .preview-pane { flex: 1; padding: 0.75rem 1rem 2.5rem;
+      .form-pane { flex: 0 0 320px; min-width: 280px;
+                   padding: 0.75rem 1rem;
+                   overflow-y: auto; box-sizing: border-box;
+                   border-right: 1px solid #eee; }
+      .preview-pane { flex: 1 1 0; min-width: 0;
+                      padding: 0.75rem 1rem 2.5rem;
                       overflow-y: auto; box-sizing: border-box;
                       /* Edge shadows that appear only when there is more to
                          scroll: the white "covers" scroll with the content and
@@ -67,7 +70,14 @@
                       background-repeat: no-repeat;
                       background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
                       background-attachment: local, local, scroll, scroll; }
-      .preview-pane #preview { max-width: 600px; margin: 0 auto; }
+      .preview-pane #preview { max-width: min(100%, 1200px); margin: 0 auto; }
+
+      @media (max-width: 640px) {
+        #app { height: auto; flex-direction: column; }
+        .form-pane { flex: 0 0 auto; width: 100%; min-width: 0;
+                     border-right: 0; border-bottom: 1px solid #eee; }
+        .preview-pane { flex: 0 0 auto; width: 100%; }
+      }
       fieldset { margin: 0 0 0.75rem; padding: 0.5rem 0.75rem; border: 1px solid #ccc; }
       fieldset label { display: inline-block; margin-right: 1rem; margin-bottom: 0.25rem; }
       input[type="number"], input[type="text"], select {
