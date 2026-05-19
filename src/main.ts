@@ -140,6 +140,41 @@ function tileSize_mmFromTagSize(tagSize_mm: number, family: TagFamilyDef): numbe
   return tagSize_mm * (family.tileSize_px / family.widthAtBorder_modules);
 }
 
+/** Largest tag size (canonical edge) that still fits on `paper` after the
+ *  current page margins, with the appropriate quiet-zone policy applied.
+ *  Used as the upper bound of the size sliders so they can't be dragged to
+ *  values the layout engine would reject. The number input is unbounded;
+ *  this only constrains the slider's drag range. Closed-form per shape +
+ *  override mode — no binary search needed. Returns 0 when the paper is
+ *  too small to hold any tag at all. */
+function maxFittingTagSize_mm(
+  paper: Paper,
+  pageMargin_mm: number,
+  familyDef: TagFamilyDef,
+  overrideAdvanced: boolean,
+  quietZone_mm: number,
+): number {
+  const printable = Math.min(
+    paper.width_mm - 2 * pageMargin_mm,
+    paper.height_mm - 2 * pageMargin_mm,
+  );
+  if (printable <= 0) return 0;
+  const wab = familyDef.widthAtBorder_modules;
+  if (familyDef.shape === "circle") {
+    const R = familyDef.outerRadius_modules!;
+    if (R <= 0) return 0;
+    if (overrideAdvanced) {
+      return Math.max(0, ((printable / 2) - quietZone_mm) * wab / R);
+    }
+    return printable * wab / (2 * (R + 0.5));
+  }
+  const tile = familyDef.tileSize_px;
+  if (overrideAdvanced) {
+    return Math.max(0, (printable - 2 * quietZone_mm) * wab / tile);
+  }
+  return printable * wab / (tile + 1);
+}
+
 /** Default quiet zone added outside the printed tile: half a module. The
  *  tile already includes whatever white border the family ships with (e.g.
  *  tag36h11's outer ring), so this is just a small cutting buffer.
@@ -416,6 +451,37 @@ function bindSliderToNumber(
   });
 }
 
+/** Slider lower bound — small enough to cover postage-stamp tags but not
+ *  pointless. Number input is unbounded. */
+const SIZE_SLIDER_MIN_MM = 10;
+
+/** Update the `max` attribute on the tag-size and total-size sliders to
+ *  reflect the largest tag that fits the current paper. The sliders shouldn't
+ *  let the user drag to a value that immediately fails layout. The number
+ *  input remains authoritative (it can hold values outside this range);
+ *  setting `slider.max` below `slider.value` clamps the slider without
+ *  firing input, so the number box is not silently rewritten. */
+function updateSliderMaxes(paper: Paper, options: LayoutOptions, familyDef: TagFamilyDef | undefined, overrideAdvanced: boolean): void {
+  const tagSlider = document.getElementById("tagSizeSlider") as HTMLInputElement | null;
+  const totalSlider = document.getElementById("totalSizeSlider") as HTMLInputElement | null;
+  if (!tagSlider && !totalSlider) return;
+
+  const printable = Math.min(
+    paper.width_mm - 2 * options.pageMargin_mm,
+    paper.height_mm - 2 * options.pageMargin_mm,
+  );
+  // Round down to slider step so the printed `max` is a clean value.
+  const round = (v: number): number => Math.max(SIZE_SLIDER_MIN_MM, Math.floor(v * 2) / 2);
+
+  if (tagSlider && familyDef) {
+    const maxTag = maxFittingTagSize_mm(paper, options.pageMargin_mm, familyDef, overrideAdvanced, options.quietZone_mm);
+    tagSlider.max = String(round(maxTag));
+  }
+  if (totalSlider && printable > 0) {
+    totalSlider.max = String(round(printable));
+  }
+}
+
 /** Mirror the tag-size and total-size sliders back to their number boxes
  *  whenever recompute() changes those values (e.g. typing in Total size
  *  rewrites Tag size, which should drag the tag-size slider with it). */
@@ -444,6 +510,25 @@ function recompute(): void {
   const s = readForm();
   const familyDef = getFamily(s.family);
   syncDependentFields(s, familyDef);
+  // Update slider maxima now (using whatever paper / margins the user has set
+  // so far) so the sliders track the current paper even while the form has
+  // validation errors elsewhere. Skip when the custom paper has invalid
+  // dimensions — the previous max stays in place.
+  const previewPaper: Paper | null =
+    s.paperKey === "custom"
+      ? (Number.isFinite(s.paperWidth_mm) && Number.isFinite(s.paperHeight_mm) &&
+         s.paperWidth_mm > 0 && s.paperHeight_mm > 0
+          ? { width_mm: s.paperWidth_mm, height_mm: s.paperHeight_mm }
+          : null)
+      : (PAPERS[s.paperKey] ?? null);
+  if (previewPaper && familyDef) {
+    const previewOptions: LayoutOptions = {
+      pageMargin_mm: Number.isFinite(s.pageMargin_mm) && s.pageMargin_mm >= 0 ? s.pageMargin_mm : 0,
+      quietZone_mm: Number.isFinite(s.quietZone_mm) && s.quietZone_mm >= 0 ? s.quietZone_mm : 0,
+      cutMargin_mm: Number.isFinite(s.cutMargin_mm) && s.cutMargin_mm >= 0 ? s.cutMargin_mm : 0,
+    };
+    updateSliderMaxes(previewPaper, previewOptions, familyDef, s.overrideAdvanced);
+  }
   syncSlidersFromInputs();
 
   // Re-read after syncDependentFields, which may have refreshed the values.
