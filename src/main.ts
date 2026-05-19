@@ -964,7 +964,7 @@ function bootstrap(): void {
               <select id="family">${familyOptions}</select><span class="field-error" id="family-err"></span>
             </label>
             <label>Tag IDs <input id="ids" type="text" value="0-19"><span class="field-error" id="ids-err"></span></label>
-            <span style="color:#888;font-size:0.85em">single IDs and ranges, e.g. 0-9, 12, 15-20</span>
+            <span class="note">single IDs and ranges, e.g. 0-9, 12, 15-20</span>
             <div id="subtag-chain"></div>
           </fieldset>
           <fieldset>
@@ -984,23 +984,23 @@ function bootstrap(): void {
               <label>Height (mm)
                 <input id="paperHeight" type="number" value="297" step="1" min="${CUSTOM_PAPER_MIN_MM}" max="${CUSTOM_PAPER_MAX_MM}" style="width:5em"><span class="field-error" id="paperHeight-err"></span>
               </label>
-              <span style="color:#888;font-size:0.85em">${CUSTOM_PAPER_MIN_MM}–${CUSTOM_PAPER_MAX_MM} mm each side</span>
+              <span class="note">${CUSTOM_PAPER_MIN_MM}–${CUSTOM_PAPER_MAX_MM} mm each side</span>
             </div>
           </fieldset>
-          <fieldset>
-            <legend>Tag</legend>
+          <fieldset class="tag-dim">
+            <legend>Tag Dimensions</legend>
             <label>Tag size (mm)
-              <input id="tagSize" type="number" value="40" step="0.5" min="1">
+              <input id="tagSize" class="no-spin" type="number" value="40" step="0.5" min="1">
               <input id="tagSizeSlider" class="slider" type="range" min="10" max="200" step="0.5" value="40" aria-label="Tag size slider">
               <span class="field-error" id="tagSize-err"></span>
             </label>
-            <span style="color:#888;font-size:0.85em">canonical (black-border) edge — what detectors expect</span>
+            <span class="note">canonical (black-border) edge — what detectors expect</span>
             <label>Total size (mm)
-              <input id="totalSize" type="number" step="0.5" min="1">
+              <input id="totalSize" class="no-spin" type="number" step="0.5" min="1">
               <input id="totalSizeSlider" class="slider" type="range" min="10" max="300" step="0.5" value="40" aria-label="Total size slider">
               <span class="field-error" id="totalSize-err"></span>
             </label>
-            <span style="color:#888;font-size:0.85em">tag plus its quiet zone on every side; edit either, the other follows</span>
+            <span class="note">tag plus its quiet zone on every side; edit either, the other follows</span>
             <details style="margin-top:0.5rem">
               <summary style="cursor:pointer">Advanced</summary>
               <div style="margin-top:0.4rem">
@@ -1008,15 +1008,15 @@ function bootstrap(): void {
               </div>
               <div style="margin-top:0.3rem">
                 <label>Quiet zone (mm) <input id="quietZone" type="number" step="0.1" min="0" disabled><span class="field-error" id="quietZone-err"></span></label>
-                <span style="color:#888;font-size:0.85em">auto = 1 module = tagSize / bitmap edge</span>
+                <span class="note">auto = 1 module = tagSize / bitmap edge</span>
               </div>
               <div>
                 <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled><span class="field-error" id="cutMargin-err"></span></label>
-                <span style="color:#888;font-size:0.85em">paper gap between cuts of adjacent tags (0 = shared cut line)</span>
+                <span class="note">paper gap between cuts of adjacent tags (0 = shared cut line)</span>
               </div>
               <div>
                 <label>Page margin (mm) <input id="pageMargin" type="number" value="10" step="0.5" min="0"><span class="field-error" id="pageMargin-err"></span></label>
-                <span style="color:#888;font-size:0.85em">unprintable border around each page</span>
+                <span class="note">unprintable border around each page</span>
               </div>
             </details>
           </fieldset>
@@ -1024,11 +1024,11 @@ function bootstrap(): void {
             <legend>Output</legend>
             <div>
               <label><input type="checkbox" id="printLabelsOnBack"> Print tag info on backside</label>
-              <span style="color:#888;font-size:0.85em">for double-sided printing (long-edge / horizontal flip)</span>
+              <span class="note">for double-sided printing (long-edge / horizontal flip)</span>
             </div>
             <div id="quietLabelRow" style="margin-top:0.3rem">
               <label><input type="checkbox" id="printLabelsInQuietZone"> Print tag info in the quiet zone (front)</label>
-              <span style="color:#888;font-size:0.85em">stays on the cut-out tag; small print — best at ~20 mm tags or larger</span>
+              <span class="note">stays on the cut-out tag; small print — best at ~20 mm tags or larger</span>
             </div>
           </fieldset>
         </form>
@@ -1067,7 +1067,37 @@ function bootstrap(): void {
   document.getElementById("downloadBtn")?.addEventListener("click", () => {
     void handleDownload();
   });
+  wireDebugFormFlex();
   recompute();
+}
+
+/** Temporary debug control. The bar at the top of the page exposes the form
+ *  pane's flex-grow value so the user can interactively find the ideal
+ *  form-to-preview ratio. Preview pane is fixed at flex-grow: 2; the form's
+ *  share is `formFlex / (formFlex + 2)`. Mirrors slider ↔ number ↔ computed
+ *  share readout. Will be removed once the ratio is locked in. */
+function wireDebugFormFlex(): void {
+  const slider = document.getElementById("debugFormFlex") as HTMLInputElement | null;
+  const num = document.getElementById("debugFormFlexNum") as HTMLInputElement | null;
+  const out = document.getElementById("debugFormShare");
+  if (!slider || !num || !out) return;
+  const PREVIEW_FLEX = 2;
+  const apply = (value: string): void => {
+    const v = Number.parseFloat(value);
+    if (!Number.isFinite(v) || v <= 0) return;
+    document.documentElement.style.setProperty("--form-flex", String(v));
+    const share = v / (v + PREVIEW_FLEX);
+    out.textContent = `→ form ${(share * 100).toFixed(1)}% / preview ${((1 - share) * 100).toFixed(1)}%  (form-flex=${v})`;
+  };
+  slider.addEventListener("input", () => {
+    num.value = slider.value;
+    apply(slider.value);
+  });
+  num.addEventListener("input", () => {
+    slider.value = num.value;
+    apply(num.value);
+  });
+  apply(slider.value);
 }
 
 bootstrap();

@@ -48,12 +48,24 @@
       .site-header { padding: 0.6rem 1rem 0.55rem; border-bottom: 1px solid #eee; flex: 0 0 auto; }
       .site-header h1 { margin: 0; font-size: 1.2rem; font-weight: 600; }
       .site-header .tagline { margin: 0.15rem 0 0; color: #555; font-size: 0.88rem; }
-      #app { flex: 0 0 auto; height: calc(100vh - 4.5rem); display: flex; }
-      .form-pane { flex: 0 0 320px; min-width: 280px;
+      /* Pane proportion is controlled by --form-flex (form-pane's flex-grow).
+         Preview is fixed at flex-grow: 2 so extra space is distributed in the
+         ratio form:preview = var(--form-flex):2. The debug bar at the top of
+         the page lets the user tune this live. */
+      :root { --form-flex: 1; }
+      .debug-bar { padding: 0.4rem 1rem; border-bottom: 1px solid #eee;
+                   font-size: 0.85rem; color: #555; flex: 0 0 auto;
+                   display: flex; align-items: center; gap: 0.5rem;
+                   background: #fafafa; }
+      .debug-bar label { font-weight: 600; color: #c00; }
+      .debug-bar input[type="number"] { width: 4em; }
+      .debug-bar .computed { color: #888; font-variant-numeric: tabular-nums; }
+      #app { flex: 0 0 auto; height: calc(100vh - 6.5rem); display: flex; }
+      .form-pane { flex: var(--form-flex) 1 0; min-width: 280px;
                    padding: 0.75rem 1rem;
                    overflow-y: auto; box-sizing: border-box;
                    border-right: 1px solid #eee; }
-      .preview-pane { flex: 1 1 0; min-width: 0;
+      .preview-pane { flex: 2 1 0; min-width: 0;
                       padding: 0.75rem 1rem 2.5rem;
                       overflow-y: auto; box-sizing: border-box;
                       /* Edge shadows that appear only when there is more to
@@ -99,6 +111,17 @@
       }
       input[type="number"], input[type="text"] { width: 8em; }
       input#ids { width: 16em; }
+      /* Number boxes used alongside a slider: no spinner arrows (the slider
+         is the coarse control, the number box is for precision typing). */
+      input.no-spin { -moz-appearance: textfield; appearance: textfield; }
+      input.no-spin::-webkit-outer-spin-button,
+      input.no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      /* Hint text under a form control on its own line, indented under the
+         control's label. */
+      .note { display: block; color: #888; font-size: 0.85em;
+              margin: -0.15rem 0 0.45rem; }
+      /* Narrow number boxes inside the Tag Dimensions fieldset. */
+      fieldset.tag-dim input[type="number"] { width: 4em; }
       select { width: auto; max-width: 100%; }
       button#downloadBtn {
         font: inherit; background: #fff; color: #222;
@@ -176,6 +199,15 @@
       <h1>ArUco and AprilTag Generator</h1>
       <p class="tagline">Generate ready-to-print AprilTags and ArUco markers as PDFs. Free, opensource, browser-based, with built-in support for recursive nested tags.</p>
     </header>
+    <!-- TEMPORARY: pane-ratio debug control. The slider sets form-pane's
+         flex-grow (preview-pane is fixed at 2). Use this to find the ideal
+         ratio, then we'll bake it in and remove the bar. -->
+    <div class="debug-bar" id="debugBar">
+      <label for="debugFormFlex">DEBUG · form weight</label>
+      <input type="range" id="debugFormFlex" class="slider" min="0.2" max="3" step="0.05" value="1">
+      <input type="number" id="debugFormFlexNum" min="0.2" max="3" step="0.05" value="1">
+      <span class="computed" id="debugFormShare"></span>
+    </div>
     <main id="app"></main>
     <footer class="site-footer">
       <h2>About this generator</h2>
