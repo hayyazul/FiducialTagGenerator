@@ -479,6 +479,11 @@ function bindSliderToNumber(
  *  pointless. Number input is unbounded. */
 const SIZE_SLIDER_MIN_MM = 10;
 
+/** Number of pages to actually render into the live preview. The downloaded
+ *  PDF still contains every page; this only bounds DOM-update cost per
+ *  recompute so slider drags stay smooth at the 1000-id limit. */
+const PREVIEW_PAGE_CAP = 4;
+
 /** Update the `max` attribute on the tag-size and total-size sliders to
  *  reflect the largest tag that fits the current paper. The sliders shouldn't
  *  let the user drag to a value that immediately fails layout. The number
@@ -754,15 +759,27 @@ function recompute(): void {
     printLabelsInQuietZone:
       (field("printLabelsInQuietZone") as HTMLInputElement).checked,
   };
-  preview.innerHTML =
-    Array.from({ length: plan.pageCount }, (_, p) => {
-      return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
-        plan,
-        p,
-        markerProvider,
-        { ...previewOpts, rasterizer: previewRasterizer },
-      )}</section>`;
-    }).join("") || `<p style="color:#888">No pages — add some tags.</p>`;
+  // Live preview is capped so a slider drag never has to re-emit dozens of
+  // pages of SVG per frame. The full layout is in the downloaded PDF; the
+  // summary line above already reports the real page count. Cap chosen to
+  // keep ~80 tags in the DOM at full A4 / 40 mm and stay inside a 60 fps
+  // budget on typical hardware.
+  const previewPages = Math.min(plan.pageCount, PREVIEW_PAGE_CAP);
+  const pagesHtml = Array.from({ length: previewPages }, (_, p) => {
+    return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
+      plan,
+      p,
+      markerProvider,
+      { ...previewOpts, rasterizer: previewRasterizer },
+    )}</section>`;
+  }).join("");
+  const hiddenPages = plan.pageCount - previewPages;
+  const previewMore = hiddenPages > 0
+    ? `<p class="preview-more">+ ${hiddenPages} more page${hiddenPages === 1 ? "" : "s"} in the downloaded file</p>`
+    : "";
+  preview.innerHTML = pagesHtml
+    ? pagesHtml + previewMore
+    : `<p style="color:#888">No pages — add some tags.</p>`;
   currentPlan = plan;
   currentTags = tags;
   syncDownloadButton();

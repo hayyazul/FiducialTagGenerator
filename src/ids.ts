@@ -31,9 +31,11 @@ export function parseTagIdSpec(spec: string): number[] {
   return ids;
 }
 
-// A single range may not span more than this — guards against a typo like
-// "0-99999999" trying to materialise a vast array and freezing the page.
-const MAX_RANGE_SPAN = 10000;
+// A single range may not span more than this. Above this, the live preview's
+// per-frame SVG rebuild during slider drags stops being smooth, and the layout
+// is no longer something a person realistically inspects on screen — they want
+// the PDF.
+const MAX_RANGE_SPAN = 1000;
 
 function expandToken(token: string): number[] {
   const range = /^(\d+)\s*-\s*(\d+)$/.exec(token);
