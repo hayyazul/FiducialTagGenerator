@@ -216,9 +216,13 @@ export class SvgCanvas implements Canvas {
       // `alpha_svg - sign * π/2` since alpha_svg = -alpha_canvas.
       const alpha_svg = -alpha_canvas;
       const rotDeg = ((alpha_svg - sign * (Math.PI / 2)) * 180) / Math.PI;
+      // `dominant-baseline="central"` anchors each glyph at its
+      // cap-height midpoint (rather than the alphabetic baseline), so
+      // the visual centre of the letter lands exactly on the arc of
+      // `radius_mm`. PdfCanvas does the same via an explicit offset.
       this.parts.push(
         `<text x="${px}" y="${py_svg}" font-size="${opts.fontSize_mm}" ` +
-          `text-anchor="middle" fill="${fill}" ` +
+          `text-anchor="middle" dominant-baseline="central" fill="${fill}" ` +
           `font-family="${fontFamily}"` +
           weight +
           ` transform="rotate(${rotDeg}, ${px}, ${py_svg})">` +

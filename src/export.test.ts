@@ -64,7 +64,7 @@ describe("runExport", () => {
       format: "pdf",
       mode: "packed",
     });
-    expect(result.filename).toBe("tags.pdf");
+    expect(result.filename).toBe("tag36h11-4.pdf");
     expect(result.blob.type).toBe("application/pdf");
     const bytes = new Uint8Array(await result.blob.arrayBuffer());
     const reloaded = await PDFDocument.load(bytes);

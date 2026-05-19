@@ -20,7 +20,7 @@
  */
 import { zipSync, strToU8, type Zippable } from "fflate";
 import type { MarkerProvider } from "./families";
-import type { LayoutPlan, Placement } from "./layout/types";
+import type { LayoutPlan, Placement, TagSpec } from "./layout/types";
 import { composePage } from "./render/compose";
 import { composePerTag, perTagCanvasSize_mm } from "./render/compose-per-tag";
 import { PngCanvas } from "./render/png-canvas";
@@ -78,7 +78,10 @@ async function runPdfPacked(
     printLabelsOnBack: opts.printLabelsOnBack,
   };
   const bytes = await renderPlan(req.plan, req.markers, renderOpts);
-  return { blob: bytesToBlob(bytes, "application/pdf"), filename: "tags.pdf" };
+  return {
+    blob: bytesToBlob(bytes, "application/pdf"),
+    filename: planBaseName(req.plan) + ".pdf",
+  };
 }
 
 // -------------------- SVG --------------------
@@ -97,6 +100,7 @@ function runSvgPacked(
       pages.push({ name: `page-${p + 1}-back.svg`, svg: back });
     }
   }
+  const base = planBaseName(req.plan);
   if (pages.length === 0) {
     // Empty plan — surface an empty SVG rather than a useless zip.
     return {
@@ -104,16 +108,19 @@ function runSvgPacked(
         [emptySvg(req.plan.paper.width_mm, req.plan.paper.height_mm)],
         { type: "image/svg+xml" },
       ),
-      filename: "tags.svg",
+      filename: base + ".svg",
     };
   }
   if (pages.length === 1) {
     return {
       blob: new Blob([pages[0]!.svg], { type: "image/svg+xml" }),
-      filename: "tags.svg",
+      filename: base + ".svg",
     };
   }
-  return zipResult(pages.map((p) => ({ name: p.name, data: strToU8(p.svg) })), "tags-svg.zip");
+  return zipResult(
+    pages.map((p) => ({ name: p.name, data: strToU8(p.svg) })),
+    base + "-svg.zip",
+  );
 }
 
 function runSvgPerTag(
@@ -125,13 +132,14 @@ function runSvgPerTag(
     const svg = renderPerTagSvg(entry.placement, req.plan, req.markers, opts, rasterizer);
     return { name: `${entry.name}.svg`, data: strToU8(svg), idx: i };
   });
+  const base = planBaseName(req.plan);
   if (files.length === 0) {
     return {
       blob: new Blob(
         [emptySvg(req.plan.tileSize_mm, req.plan.tileSize_mm)],
         { type: "image/svg+xml" },
       ),
-      filename: "tags.svg",
+      filename: base + ".svg",
     };
   }
   if (files.length === 1) {
@@ -142,7 +150,10 @@ function runSvgPerTag(
       filename: f.name,
     };
   }
-  return zipResult(files.map((f) => ({ name: f.name, data: f.data })), "tags-per-tag-svg.zip");
+  return zipResult(
+    files.map((f) => ({ name: f.name, data: f.data })),
+    base + "-per-tag-svg.zip",
+  );
 }
 
 // -------------------- PNG --------------------
@@ -161,16 +172,17 @@ async function runPngPacked(
       files.push({ name: `page-${p + 1}-back.png`, data: back });
     }
   }
+  const base = planBaseName(req.plan);
   if (files.length === 0) {
-    return { blob: bytesToBlob(new Uint8Array(), "image/png"), filename: "tags.png" };
+    return { blob: bytesToBlob(new Uint8Array(), "image/png"), filename: base + ".png" };
   }
   if (files.length === 1) {
     return {
       blob: bytesToBlob(files[0]!.data, "image/png"),
-      filename: "tags.png",
+      filename: base + ".png",
     };
   }
-  return zipResult(files, "tags-png.zip");
+  return zipResult(files, base + "-png.zip");
 }
 
 async function runPngPerTag(
@@ -183,14 +195,15 @@ async function runPngPerTag(
     const data = await renderPerTagPng(entry.placement, req.plan, req.markers, opts, dpi);
     files.push({ name: `${entry.name}.png`, data });
   }
+  const base = planBaseName(req.plan);
   if (files.length === 0) {
-    return { blob: bytesToBlob(new Uint8Array(), "image/png"), filename: "tags.png" };
+    return { blob: bytesToBlob(new Uint8Array(), "image/png"), filename: base + ".png" };
   }
   if (files.length === 1) {
     const f = files[0]!;
     return { blob: bytesToBlob(f.data, "image/png"), filename: f.name };
   }
-  return zipResult(files, "tags-per-tag-png.zip");
+  return zipResult(files, base + "-per-tag-png.zip");
 }
 
 // -------------------- page renderers --------------------
@@ -287,6 +300,21 @@ async function renderPerTagPng(
 }
 
 // -------------------- helpers --------------------
+
+/** Stem used for downloaded packed / zipped files:
+ *  `${family-chain}-${count}`, where `family-chain` is the root family
+ *  joined with `+` for each recursive sub-family level (e.g.
+ *  `tagCustom48h12+tag36h11`) and `count` is the number of placements.
+ *  Falls back to `"tags"` for an empty plan. */
+export function planBaseName(plan: LayoutPlan): string {
+  const first = plan.placements[0];
+  if (!first) return "tags";
+  const chain: string[] = [];
+  for (let t: TagSpec | undefined = first.tag; t; t = t.subtag) {
+    chain.push(t.family);
+  }
+  return `${chain.join("+")}-${plan.placements.length}`;
+}
 
 /** Per-tag filename per placement, deduplicating by appending the
  *  placement index when two placements share a family/id. */

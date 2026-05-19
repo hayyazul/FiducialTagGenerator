@@ -21,10 +21,12 @@ export {
 
 import type { Family } from "./family";
 import { ArucoFamily } from "./aruco-family";
+import { CCTagFamily } from "./cctag-family";
 import { MosaicFamily } from "./mosaic-family";
 
 const ARUCO_DICT_BASE = `${import.meta.env.BASE_URL}resources/aruco_dictionaries`;
 const APRILTAG_BASE = `${import.meta.env.BASE_URL}resources/apriltag`;
+const CCTAG_BASE = `${import.meta.env.BASE_URL}resources/cctag`;
 
 /** ArUco dictionaries shipped under `public/resources/aruco_dictionaries/`.
  *
@@ -133,6 +135,20 @@ const FAMILIES: Family[] = [
         jsonPath: `${ARUCO_DICT_BASE}/${d.fileStem ?? d.name}.min.json`,
       }),
   ),
+  new CCTagFamily({
+    name: "cctag3",
+    group: "CCTag",
+    ringsPerMarker: 5,
+    count: 32,
+    dataPath: `${CCTAG_BASE}/cctag3.txt`,
+  }),
+  new CCTagFamily({
+    name: "cctag4",
+    group: "CCTag",
+    ringsPerMarker: 7,
+    count: 128,
+    dataPath: `${CCTAG_BASE}/cctag4.txt`,
+  }),
 ];
 
 const FAMILIES_BY_NAME = new Map(FAMILIES.map((f) => [f.name, f]));

@@ -178,6 +178,13 @@ export class PdfCanvas implements Canvas {
 
     const fill = toPdfColor(opts.fill ?? { r: 0, g: 0, b: 0 });
 
+    // Approximate fraction of font-size from baseline up to the
+    // cap-height midline. Mirrors the SVG side's
+    // `dominant-baseline="central"` so both backends anchor each glyph
+    // at its visual centre on the arc of `radius_mm` rather than at the
+    // alphabetic baseline.
+    const capMid = fontPt * 0.35;
+
     for (let i = 0; i < opts.text.length; i++) {
       const alpha = startAngle_rad + i * angleStep_rad;
       const px = opts.cx_mm + opts.radius_mm * Math.cos(alpha);
@@ -192,9 +199,17 @@ export class PdfCanvas implements Canvas {
       const rot_deg = (rotation_rad * 180) / Math.PI;
       const glyph = opts.text[i]!;
       const w = font.widthOfTextAtSize(glyph, fontPt);
+      // pdf-lib rotates the glyph around the (x, y) we pass (the
+      // baseline-left). To land the glyph's visual centre exactly on
+      // (px, py), shift baseline-left back by the rotated offset to
+      // the glyph centre `(w/2, capMid)`.
+      const cosT = Math.cos(rotation_rad);
+      const sinT = Math.sin(rotation_rad);
+      const offX = (w / 2) * cosT - capMid * sinT;
+      const offY = (w / 2) * sinT + capMid * cosT;
       this.pdfPage.drawText(glyph, {
-        x: PT(px) - w / 2,
-        y: PT(py) - fontPt * 0.25,
+        x: PT(px) - offX,
+        y: PT(py) - offY,
         font,
         size: fontPt,
         rotate: degrees(rot_deg),

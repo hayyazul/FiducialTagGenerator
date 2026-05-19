@@ -297,38 +297,51 @@ function drawCircularQuietZoneCaption(
   const subText = subtagChainLabel(tag.subtag, plan.subtagLevels);
   const maxArc_deg = 120;
 
+  // `drawCurvedText` anchors each glyph at its cap-height midline on
+  // `radius_mm` (see SvgCanvas / PdfCanvas). For sign=+1 captions the
+  // radially-outward edge of a glyph is the descender bottom, which
+  // sits roughly `ANCHOR_TO_DESCENDER · fontSize_mm` further out than
+  // the anchor itself; the inward edge (cap top) sits roughly
+  // `ANCHOR_TO_CAPTOP · fontSize_mm` further in. Both fractions are
+  // ballpark font metrics (cap height ≈ 0.7 em, descender ≈ 0.2 em);
+  // exact values vary per font but stay within a few percent.
+  const ANCHOR_TO_CAPTOP = 0.35;
+  const ANCHOR_TO_DESCENDER = 0.55;
+  const GAP_FRAC = 0.1;
+
   if (subText) {
-    const outerRadius = cutRadius - Q * 0.3;
-    const innerRadius = cutRadius - Q * 0.8;
     const maxFontH = Q * 0.35;
-    for (const [text, radius] of [
-      [mainText, outerRadius],
-      [subText, innerRadius],
-    ] as const) {
-      const maxFontArc =
-        (radius * maxArc_deg * Math.PI) / 180 / (text.length * 0.6);
-      const fontSize_mm = Math.max(0.18, Math.min(maxFontH, maxFontArc));
-      canvas.drawCurvedText({
-        text,
-        cx_mm: cx,
-        cy_mm: cy,
-        radius_mm: radius,
-        centerAngle_deg: -90,
-        direction: "cw",
-        maxArc_deg,
-        fontSize_mm,
-        font: "mono",
-        fill: BLACK,
-      });
-    }
+    const outerFontArc =
+      (cutRadius * maxArc_deg * Math.PI) / 180 / (mainText.length * 0.6);
+    const outerFont = Math.max(0.18, Math.min(maxFontH, outerFontArc));
+    // Outer caption: descender just inside the cut.
+    const outerRadius = cutRadius - (ANCHOR_TO_DESCENDER + GAP_FRAC) * outerFont;
+    // Inner caption: its descender sits just inside the outer
+    // caption's cap-top, leaving a small gap between the two lines.
+    const outerCapTop = outerRadius - ANCHOR_TO_CAPTOP * outerFont;
+    const innerFontArc =
+      (outerCapTop * maxArc_deg * Math.PI) / 180 / (subText.length * 0.6);
+    const innerFont = Math.max(0.18, Math.min(maxFontH, innerFontArc));
+    const innerRadius =
+      outerCapTop - (ANCHOR_TO_DESCENDER + GAP_FRAC) * innerFont;
+    canvas.drawCurvedText({
+      text: mainText, cx_mm: cx, cy_mm: cy, radius_mm: outerRadius,
+      centerAngle_deg: -90, direction: "cw", maxArc_deg,
+      fontSize_mm: outerFont, font: "mono", fill: BLACK,
+    });
+    canvas.drawCurvedText({
+      text: subText, cx_mm: cx, cy_mm: cy, radius_mm: innerRadius,
+      centerAngle_deg: -90, direction: "cw", maxArc_deg,
+      fontSize_mm: innerFont, font: "mono", fill: BLACK,
+    });
     return;
   }
 
-  const textRadius = cutRadius - Q * 0.5;
   const maxFontH = Q * 0.7;
   const maxFontArc =
-    (textRadius * maxArc_deg * Math.PI) / 180 / (mainText.length * 0.6);
+    (cutRadius * maxArc_deg * Math.PI) / 180 / (mainText.length * 0.6);
   const fontSize_mm = Math.max(0.18, Math.min(maxFontH, maxFontArc));
+  const textRadius = cutRadius - (ANCHOR_TO_DESCENDER + GAP_FRAC) * fontSize_mm;
   canvas.drawCurvedText({
     text: mainText,
     cx_mm: cx,
