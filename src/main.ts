@@ -219,6 +219,57 @@ function deriveQuietZone_mm(tagSize_mm: number, family: Family): number {
   return 0.5 * (tagSize_mm / wab);
 }
 
+/** Help-text fragments under the Tag Dimensions inputs, adapted to the
+ *  selected family. The "Tag size" input means different things across
+ *  families — AprilTag's black-border edge, ArUco's full marker edge
+ *  (border included), CCTag's outer disk diameter — and the quiet-zone
+ *  auto formula has no bit-grid analogue for CCTag. */
+function familyNotes(family: Family | undefined): {
+  tagSize: string;
+  totalSize: string;
+  quietZoneAuto: string;
+} {
+  if (!family) {
+    return {
+      tagSize: "tag dimension",
+      totalSize: "tag plus its quiet zone on every side; edit either, the other follows",
+      quietZoneAuto: "auto = small cutting buffer outside the marker",
+    };
+  }
+  if (family.group === "ArUco") {
+    return {
+      tagSize: "edge of the printed marker (black border included) — what detectors expect",
+      totalSize: "marker plus its quiet zone on every side; edit either, the other follows",
+      quietZoneAuto: "auto = ½ a bit-grid cell of the marker",
+    };
+  }
+  if (family.group === "CCTag") {
+    return {
+      tagSize: "diameter of the outer disk — what detectors measure",
+      totalSize: "outer disk plus its quiet zone on every side; edit either, the other follows",
+      quietZoneAuto: "auto = 10% of the outer disk diameter (small cutting buffer)",
+    };
+  }
+  // AprilTag (and any other square bit-grid families with an outer ring).
+  return {
+    tagSize: "canonical (black-border) edge — what detectors expect",
+    totalSize: "tag plus its quiet zone on every side; edit either, the other follows",
+    quietZoneAuto: "auto = ½ a bit-grid module (½ × tagSize / widthAtBorder)",
+  };
+}
+
+function setNoteText(id: string, text: string): void {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function updateFamilyNotes(family: Family | undefined): void {
+  const n = familyNotes(family);
+  setNoteText("tagSize-note", n.tagSize);
+  setNoteText("totalSize-note", n.totalSize);
+  setNoteText("quietZone-note", n.quietZoneAuto);
+}
+
 function readForm(): FormState {
   return {
     family: field("family").value,
@@ -674,6 +725,7 @@ function recompute(): void {
 
   const s = readForm();
   const familyDef = getFamily(s.family);
+  updateFamilyNotes(familyDef);
   syncDependentFields(s, familyDef);
   // Update slider maxima now (using whatever paper / margins the user has set
   // so far) so the sliders track the current paper even while the form has
@@ -1187,13 +1239,13 @@ function bootstrap(): void {
               <input id="tagSizeSlider" class="slider" type="range" min="10" max="200" step="0.1" value="40" aria-label="Tag size slider">
               <span class="field-error" id="tagSize-err"></span>
             </label>
-            <span class="note">canonical (black-border) edge — what detectors expect</span>
+            <span class="note" id="tagSize-note">canonical (black-border) edge — what detectors expect</span>
             <label>Total size (mm)
               <input id="totalSize" class="no-spin" type="number" step="0.5" min="1">
               <input id="totalSizeSlider" class="slider" type="range" min="10" max="300" step="0.1" value="40" aria-label="Total size slider">
               <span class="field-error" id="totalSize-err"></span>
             </label>
-            <span class="note">tag plus its quiet zone on every side; edit either, the other follows</span>
+            <span class="note" id="totalSize-note">tag plus its quiet zone on every side; edit either, the other follows</span>
             <details style="margin-top:0.5rem">
               <summary style="cursor:pointer">Advanced</summary>
               <div style="margin-top:0.4rem">
@@ -1201,7 +1253,7 @@ function bootstrap(): void {
               </div>
               <div style="margin-top:0.3rem">
                 <label>Quiet zone (mm) <input id="quietZone" type="number" step="0.1" min="0" disabled><span class="field-error" id="quietZone-err"></span></label>
-                <span class="note">auto = 1 module = tagSize / bitmap edge</span>
+                <span class="note" id="quietZone-note">auto = ½ a bit-grid module of the marker</span>
               </div>
               <div>
                 <label>Cut margin (mm) <input id="cutMargin" type="number" step="0.1" min="0" value="${DEFAULT_CUT_MARGIN_MM}" disabled><span class="field-error" id="cutMargin-err"></span></label>

@@ -3,33 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AprilTag &amp; ArUco Generator — Free Printable PDFs for Robotics &amp; Computer Vision</title>
-    <meta name="description" content="Free, open, browser-based AprilTag and ArUco marker generator. Print PDF tags for robotics, computer vision, and FRC. Supports recursive nested tags." />
-    <meta name="keywords" content="AprilTag generator, ArUco generator, fiducial marker generator, printable AprilTag PDF, AprilTag PDF generator, ArUco PDF, robotics markers, computer vision, FRC, Limelight, recursive AprilTag, nested AprilTag" />
+    <title>AprilTag, ArUco &amp; CCTag Generator — Free Printable PDFs for Robotics &amp; Computer Vision</title>
+    <meta name="description" content="Free, open, browser-based AprilTag, ArUco, and CCTag fiducial marker generator. Print PDF, PNG, or SVG tags for robotics, computer vision, and FRC. Supports recursive nested tags." />
+    <meta name="keywords" content="AprilTag generator, ArUco generator, CCTag generator, fiducial marker generator, printable AprilTag PDF, AprilTag PDF generator, ArUco PDF, CCTag PDF, robotics markers, computer vision, FRC, Limelight, recursive AprilTag, nested AprilTag" />
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#222222" />
-    <link rel="canonical" href="https://hayyazul.github.io/AprilTagPDFGenerator/" />
+    <link rel="canonical" href="{{SITE_URL}}" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="AprilTag &amp; ArUco Generator — Free Printable PDFs" />
-    <meta property="og:description" content="Free, open, browser-based AprilTag and ArUco marker generator. Print PDF tags for robotics, computer vision, and FRC. Supports recursive nested tags." />
-    <meta property="og:url" content="https://hayyazul.github.io/AprilTagPDFGenerator/" />
-    <meta property="og:site_name" content="AprilTag &amp; ArUco Generator" />
+    <meta property="og:title" content="AprilTag, ArUco &amp; CCTag Generator — Free Printable PDFs" />
+    <meta property="og:description" content="Free, open, browser-based AprilTag, ArUco, and CCTag fiducial marker generator. Print PDF, PNG, or SVG tags for robotics, computer vision, and FRC. Supports recursive nested tags." />
+    <meta property="og:url" content="{{SITE_URL}}" />
+    <meta property="og:site_name" content="AprilTag, ArUco &amp; CCTag Generator" />
 
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="AprilTag &amp; ArUco Generator" />
-    <meta name="twitter:description" content="Free, open, browser-based AprilTag and ArUco marker generator. Print PDF tags for robotics, computer vision, and FRC. Supports recursive nested tags." />
+    <meta name="twitter:title" content="AprilTag, ArUco &amp; CCTag Generator" />
+    <meta name="twitter:description" content="Free, open, browser-based AprilTag, ArUco, and CCTag fiducial marker generator. Print PDF, PNG, or SVG tags for robotics, computer vision, and FRC. Supports recursive nested tags." />
 
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
-      "name": "AprilTag & ArUco Generator",
-      "description": "Free, open, browser-based AprilTag and ArUco marker generator. Print PDF tags for robotics, computer vision, and FRC. Supports recursive nested tags.",
+      "name": "AprilTag, ArUco & CCTag Generator",
+      "description": "Free, open, browser-based AprilTag, ArUco, and CCTag fiducial marker generator. Print PDF, PNG, or SVG tags for robotics, computer vision, and FRC. Supports recursive nested tags.",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Any (browser)",
-      "url": "https://hayyazul.github.io/AprilTagPDFGenerator/",
+      "url": "{{SITE_URL}}",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
       "creator": {
         "@type": "Person",
@@ -37,7 +37,7 @@
         "url": "https://github.com/hayyazul",
         "affiliation": { "@type": "Organization", "name": "SIGRobotics@UIUC" }
       },
-      "codeRepository": "https://github.com/hayyazul/AprilTagPDFGenerator"
+      "codeRepository": "{{REPO_URL}}"
     }
     </script>
 
@@ -48,6 +48,8 @@
       .site-header { padding: 0.6rem 1rem 0.55rem; border-bottom: 1px solid #eee; flex: 0 0 auto; }
       .site-header h1 { margin: 0; font-size: 1.2rem; font-weight: 600; }
       .site-header .tagline { margin: 0.15rem 0 0; color: #555; font-size: 0.88rem; }
+      .site-header .byline { margin: 0.2rem 0 0; color: #666; font-size: 0.8rem; }
+      .site-header .byline a { color: #2a4d8f; }
       /* Form-pane gets flex-grow 1.2, preview gets 2 — preview is the focus
          of the tool, but the form needs enough room to fit two inputs and a
          slider on the same row. Locked from interactive tuning. */
@@ -58,7 +60,7 @@
       /* Viewport-pinned app shell: subtract the header so the form and
          preview scroll inside the remaining space instead of the whole
          page scrolling. */
-      #app { flex: 0 0 auto; height: calc(100vh - 4.5rem); display: flex; }
+      #app { flex: 0 0 auto; height: calc(100vh - 5.5rem); display: flex; }
       .form-pane { flex: 1.2 1 0; min-width: 280px;
                    padding: 0.75rem 1rem;
                    overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
@@ -214,41 +216,50 @@
       .site-footer li { margin: 0.15rem 0; }
       .site-footer a { color: #2a4d8f; }
       .site-footer code { font-size: 0.92em; }
-      .site-footer .author-bio { font-size: 0.95rem; }
+      .site-footer dl.families { margin: 0.35rem 0; }
+      .site-footer dl.families dt { font-weight: 600; margin-top: 0.6rem; }
+      .site-footer dl.families dt:first-child { margin-top: 0; }
+      .site-footer dl.families dd { margin: 0.2rem 0 0; }
+      .site-footer dl.families dd .variants { display: block; color: #555;
+                                              font-size: 0.92em; margin-top: 0.15rem; }
       .site-footer .meta-row { font-size: 0.85rem; color: #555; margin-top: 1.75rem;
                                border-top: 1px solid #eee; padding-top: 1rem; }
     </style>
   </head>
   <body>
     <header class="site-header">
-      <h1>ArUco, CCTag, and AprilTag Generator</h1>
-      <p class="tagline">Generate various ready-to-print fiducial tags for print as pdfs, pngs, or svgs. Free, opensource, browser-based, with built-in support for recursive nested tags (e.g. tagCustom48h12).</p>
+      <h1>AprilTag, ArUco, and CCTag Generator</h1>
+      <p class="tagline">Generate ready-to-print AprilTag, ArUco, and CCTag fiducial markers as PDF, PNG, or SVG. Free, open-source, browser-based, with built-in support for recursive nested tags (e.g. tagCustom48h12).</p>
+      <p class="byline">By <a href="https://www.github.com/hayyazul" rel="noopener">Ayyazul Hassan</a> &middot; <a>hayyazul@gmail.com</a> &middot; Stats &amp; CS @ UIUC, SIGRobotics@UIUC &middot; <a href="https://www.linkedin.com/in/ayyaz0000" rel="noopener">LinkedIn</a> &middot; <a href="{{REPO_URL}}" rel="noopener">Source</a></p>
     </header>
     <main id="app"></main>
     <footer class="site-footer">
-      <h2>What are AprilTags?</h2>
-      <p>AprilTags are 2D visual fiducial markers developed at the University of Michigan&rsquo;s APRIL Lab. They are used in robotics, drones, augmented reality, and computer vision research for pose estimation and object identification. The detector is open source and the bitmap encodings are published. This tool uses the official tag bitmaps from <a href="https://github.com/AprilRobotics/apriltag-imgs" rel="noopener">apriltag-imgs</a>; the detector itself lives in <a href="https://april.eecs.umich.edu/software/apriltag" rel="noopener">AprilRobotics&rsquo; apriltag library</a>.</p>
-
-      <h2>What are ArUco markers?</h2>
-      <p>ArUco is another popular family of 2D fiducial markers, originally developed at the Universidad de Córdoba and shipped with OpenCV&rsquo;s <code>aruco</code> module. They differ from AprilTags in their bit layout and Hamming distances, but are similar in role. See the <a href="https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html" rel="noopener">OpenCV ArUco detection tutorial</a>.</p>
-
-      <h2>Supported tag families</h2>
-      <ul>
-        <li><strong>AprilTag</strong>: <code>tag36h11</code> (the robotics default), <code>tagStandard41h12</code>, <code>tagStandard52h13</code>, the recursive AprilTag <code>tagCustom48h12</code>, plus the circular families <code>tagCircle21h7</code> and <code>tagCircle49h12</code>.</li>
-        <li><strong>ArUco</strong>: the <code>DICT_4X4</code>, <code>DICT_5X5</code>, <code>DICT_6X6</code>, and <code>DICT_7X7</code> dictionaries at sizes 50, 100, 250, and 1000; it also includes the original ArUco dictionary. </li>
-       <li><strong>CCTag</strong>: <code>cctag3</code> and <code>cctag4</code> are supported.</li>
-      </ul>
+      <h2>Fiducial marker families</h2>
+      <p>A fiducial marker is a printed pattern designed to be detected and uniquely identified by a camera. This tool generates printable sheets for the three most widely-used families:</p>
+      <dl class="families">
+        <dt>AprilTag</dt>
+        <dd>
+          2D fiducials developed at the University of Michigan&rsquo;s APRIL Lab. The default in robotics for pose estimation and object identification — used in drones, AR, FRC, and computer-vision research. Detector and bitmaps are open source; this tool draws from <a href="https://github.com/AprilRobotics/apriltag-imgs" rel="noopener">apriltag-imgs</a> and is compatible with <a href="https://april.eecs.umich.edu/software/apriltag" rel="noopener">AprilRobotics&rsquo; apriltag library</a>.
+          <span class="variants">Supported: <code>tag36h11</code> (the robotics default), <code>tagStandard41h12</code>, <code>tagStandard52h13</code>, the recursive <code>tagCustom48h12</code>, and the circular <code>tagCircle21h7</code> / <code>tagCircle49h12</code>.</span>
+        </dd>
+        <dt>ArUco</dt>
+        <dd>
+          2D fiducials originally developed at the Universidad de C&oacute;rdoba and shipped with OpenCV&rsquo;s <code>aruco</code> module. Similar role to AprilTag but with different bit layouts and Hamming distances. See the <a href="https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html" rel="noopener">OpenCV ArUco detection tutorial</a>.
+          <span class="variants">Supported: the <code>DICT_4X4</code>, <code>DICT_5X5</code>, <code>DICT_6X6</code>, and <code>DICT_7X7</code> dictionaries at sizes 50, 100, 250, and 1000, plus the original ArUco dictionary.</span>
+        </dd>
+        <dt>CCTag</dt>
+        <dd>
+          Concentric-ring fiducial markers designed for robust detection under motion blur and challenging lighting. Used in cinematography, photogrammetry, and SLAM research where AprilTag/ArUco-style square markers underperform.
+          <span class="variants">Supported: <code>cctag3</code> and <code>cctag4</code>.</span>
+        </dd>
+      </dl>
 
       <h2>Recursive nested tags</h2>
       <p>You can nest a smaller tag inside another tag&rsquo;s center region. The tool computes the inner tag&rsquo;s size and quiet zone automatically and renders both as a single printable PDF. Useful for applications which benefit from multi-scale detection, like take-off and landing sites for drones and for increasing detection accuracy as a whole. Currently supported on the <code>tagCustom48h12</code> AprilTag family, with all square tags supported as sub-families.</p>
 
-      <h2>About the author</h2>
-      <p class="author-bio">Built by Ayyazul Hassan, CS at UIUC and member of SIGRobotics@UIUC.</p>
-      <p class="author-bio"><a href="https://www.github.com/hayyazul" rel="noopener">Github</a> &middot; <a href="https://www.linkedin.com/in/ayyaz0000">LinkedIn<a/> &middot; Personal site: <em>coming soon</em></p>
-
       <h2>Related links</h2>
       <ul>
-        <li><a href="https://github.com/hayyazul/AprilTagPDFGenerator" rel="noopener">Source code on GitHub</a></li>
+        <li><a href="{{REPO_URL}}" rel="noopener">Source code on GitHub</a></li>
         <li><a href="https://github.com/AprilRobotics/apriltag-imgs" rel="noopener">apriltag-imgs (upstream tag bitmaps)</a></li>
         <li><a href="https://april.eecs.umich.edu/software/apriltag" rel="noopener">AprilRobotics apriltag detector</a></li>
         <li><a href="https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html" rel="noopener">OpenCV ArUco tutorial</a></li>

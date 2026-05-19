@@ -61,7 +61,7 @@ const ARUCO_DICTS: ReadonlyArray<ArucoDictEntry> = [
 const FAMILIES: Family[] = [
   new MosaicFamily({
     name: "tag36h11",
-    group: "Classic",
+    group: "AprilTag",
     count: 587,
     chunkSize: 587,
     geometry: { edge: 10, widthAtBorder: 8, outerShape: "square" },
@@ -69,7 +69,7 @@ const FAMILIES: Family[] = [
   }),
   new MosaicFamily({
     name: "tagStandard41h12",
-    group: "Standard",
+    group: "AprilTag",
     count: 2115,
     chunkSize: 2115,
     geometry: { edge: 9, widthAtBorder: 5, outerShape: "square" },
@@ -77,7 +77,7 @@ const FAMILIES: Family[] = [
   }),
   new MosaicFamily({
     name: "tagStandard52h13",
-    group: "Standard",
+    group: "AprilTag",
     count: 48714,
     chunkSize: 256,
     geometry: { edge: 10, widthAtBorder: 6, outerShape: "square" },
@@ -85,7 +85,7 @@ const FAMILIES: Family[] = [
   }),
   new MosaicFamily({
     name: "tagCustom48h12",
-    group: "Custom",
+    group: "AprilTag",
     count: 42211,
     chunkSize: 256,
     geometry: {
@@ -98,7 +98,7 @@ const FAMILIES: Family[] = [
   }),
   new MosaicFamily({
     name: "tagCircle21h7",
-    group: "Circle",
+    group: "AprilTag",
     count: 38,
     chunkSize: 38,
     geometry: {
@@ -113,7 +113,7 @@ const FAMILIES: Family[] = [
   }),
   new MosaicFamily({
     name: "tagCircle49h12",
-    group: "Circle",
+    group: "AprilTag",
     count: 65535,
     chunkSize: 256,
     geometry: {

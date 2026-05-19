@@ -31,9 +31,9 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 
 | File | Role |
 |------|------|
-| `src/main.ts` | Application entry point and UI orchestrator: builds the HTML form with recursive sub-tag UI, reads form state, validates inputs, calls `family.load(ids)` for every requested id (chunk-level lazy fetch), computes the layout plan, renders SVG previews (virtualized: paper-aspect placeholder sections for every page; IntersectionObserver streams real SVG into the in-viewport ones only — slider drags re-render just those 1–2 pages), and triggers PDF download. Readiness gating is per-(family, id) via `Family.isIdLoaded`. |
+| `src/main.ts` | Application entry point and UI orchestrator: builds the HTML form with recursive sub-tag UI, reads form state, validates inputs, calls `family.load(ids)` for every requested id (chunk-level lazy fetch), computes the layout plan, renders SVG previews (virtualized: paper-aspect placeholder sections for every page; IntersectionObserver streams real SVG into the in-viewport ones only — slider drags re-render just those 1–2 pages), and triggers PDF download. Readiness gating is per-(family, id) via `Family.isIdLoaded`. Also contains `familyNotes()` / `updateFamilyNotes()` which adapt the Tag Size, Total Size, and Quiet Zone help-text per selected family (AprilTag's black-border edge vs ArUco's full-marker edge vs CCTag's outer-disk diameter). |
 | `src/families/family.ts` | Core abstractions: `Marker` (polymorphic draw), `BitGridMarker` (bit-grid impl), `MarkerProvider` (renderer seam), `Family` (catalogue + lifecycle, with `load(ids?)` for per-id chunk loading and `isIdLoaded(id)` for the placeholder gate), `FamilyGeometry` (static per-family shape). |
-| `src/families/index.ts` | Module-level registry: instantiates one `MosaicFamily` per AprilTag family (with per-family `chunkSize`) and one `ArucoFamily` per ArUco dictionary, exposes `getFamily` / `listFamilies` / `listFamilyNames` / `listFamiliesByGroup` / `isRecursiveFamily`. |
+| `src/families/index.ts` | Module-level registry: instantiates one `MosaicFamily` per AprilTag variant (all with `group: "AprilTag"` so they collapse into a single `<optgroup>`), one `ArucoFamily` per ArUco dictionary, and two `CCTagFamily` instances. Exposes `getFamily` / `listFamilies` / `listFamilyNames` / `listFamiliesByGroup` / `isRecursiveFamily` / `listSquareFamilyNames`. |
 | `src/families/aruco-family.ts` | `ArucoFamily` (`Family` impl): fetches an ArUco dictionary JSON, lazily builds `BitGridMarker`s of edge `gridSize + 2` (data grid + 1-cell black border). Pure `buildArucoBits` helper handles the source's `0=black` → project's `true=black` inversion. |
 | `src/families/aruco-family.test.ts` | Unit tests for `ArucoFamily`: border ring, bit inversion, lifecycle, RangeError on bad id, registry integration (18 dictionaries under the `ArUco` group). |
 | `src/families/mosaic-bits.ts` | Pure helpers for the AprilTag mosaic format: `mosaicGrid`, `extractTagBits`, `circleOccupiedMask`, `applyCircleMask`, `outerRadiusModulesFor`. Decoupled from the family object model. |
@@ -74,11 +74,12 @@ Build: Vite 5 · TypeScript 5 (strict) · Vitest 2 · ESLint 9 · Node 20.
 
 | File | Role |
 |------|------|
-| `index.html` | Single-page HTML shell with full SEO meta (title, description, OG, Twitter, JSON-LD `SoftwareApplication`), favicon link, all CSS inlined, static `<header>` (h1 + tagline), `<main id="app">` mount point, and a static `<footer>` carrying explainer copy / supported-families list / author bio / related-links (all crawlable without JS). |
-| `package.json` | NPM manifest: `pdf-lib` runtime dependency; Vite, Vitest, TypeScript, and ESLint as dev dependencies. Carries SEO/repo metadata (description, keywords, homepage, author, repository). |
-| `README.md` | User-facing project description with features and USPs, plus developer Develop/Run/Deploy sections; also feeds GitHub-repo-page SEO. |
+| `index.html` | Single-page HTML shell with full SEO meta (title, description, OG, Twitter, JSON-LD `SoftwareApplication` — all referencing `{{SITE_URL}}` / `{{REPO_URL}}` placeholders resolved at build time), favicon link, all CSS inlined, static `<header>` (h1 + tagline + author byline), `<main id="app">` mount point, and a static `<footer>` carrying a merged `<dl>` explainer for all three fiducial families, recursive-tags section, related-links, and a meta-row (all crawlable without JS). |
+| `package.json` | NPM manifest: `pdf-lib` runtime dependency; Vite, Vitest, TypeScript, and ESLint as dev dependencies. Carries SEO/repo metadata (description, keywords, homepage, author, repository). Must be updated manually alongside `site.config.ts` on repo rename. |
+| `site.config.ts` | Single-source-of-truth for the published site's identity (`owner`, `repo`, derived `siteUrl` / `repoUrl` / `basePath`). Imported by `vite.config.ts` — repo rename is a one-field edit here, plus `package.json`. |
+| `README.md` | User-facing project description with features and USPs, plus developer Develop/Run/Deploy sections; also feeds GitHub-repo-page SEO. Manual update on rename. |
 | `tsconfig.json` | TypeScript config: ES2022 target, strict mode, bundler module resolution, no emit. |
-| `vite.config.ts` | Vite + Vitest config: GitHub Pages base path and Node test environment. |
+| `vite.config.ts` | Vite + Vitest config: GitHub Pages base path, Node test environment, and a `siteIdentityPlugin` that substitutes `{{SITE_URL}}` / `{{REPO_URL}}` in `index.html` at dev/build time and emits a fresh `dist/sitemap.xml` during `vite build`. |
 | `eslint.config.js` | Flat ESLint config: recommended JS + typescript-eslint rules. |
 | `.nvmrc` | Pins Node version to 20. |
 | `.gitignore` | Ignores `node_modules/`, `dist/`, logs, `.vite/`, `coverage/`, `STYLES.md`, `.DS_Store`, and `public/resources/*_mosaic.png` (build-time intermediates consumed by `scripts/chunk-mosaics.ts`). |
@@ -114,7 +115,7 @@ asked for. Generated from upstream by `scripts/chunk-mosaics.ts`.
 | `public/resources/cctag/cctag3.txt` | 3-ring CCTag radii (32 markers, 5 inner ring radii per line, integers in percent of outer disk radius). Consumed by `CCTagFamily` / `parseCCTagData`. |
 | `public/resources/cctag/cctag4.txt` | 4-ring CCTag radii (128 markers, 7 inner ring radii per line). Same format as `cctag3.txt`. |
 | `public/robots.txt` | Allows all crawlers and points to the sitemap. |
-| `public/sitemap.xml` | Single-URL sitemap for the site root; hand-maintained `lastmod`. |
+| `dist/sitemap.xml` | Single-URL sitemap for the site root, generated at build time by `vite.config.ts`'s `siteIdentityPlugin` with fresh `lastmod`. Formerly a static file under `public/`. |
 | `public/favicon.svg` | Inline SVG mark suggesting an AprilTag bit-grid, used as the browser tab favicon. |
 | `public/google60c6fb9354e060e4.html` | Google Search Console site-verification file. |
 
