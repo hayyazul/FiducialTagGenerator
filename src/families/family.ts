@@ -9,10 +9,15 @@
  * marker's internals; it only calls `marker.draw(canvas, frame)`. New
  * marker shapes therefore add a class, not a switch arm.
  *
- * Lifecycle — callers must `await family.load()` once before invoking
- * `getMarker`. After that, `getMarker(id)` is synchronous and throws on
- * invalid input rather than returning null. `load()` is idempotent and
- * safe under concurrent calls.
+ * Lifecycle — callers `await family.load()` for any minimum-to-function
+ * work the family needs (e.g. fetching a JSON dictionary). For families
+ * that load data per-id (chunked mosaics), callers additionally
+ * `await family.load(ids)` before retrieving those ids; for families
+ * where one fetch covers everything, the `ids` argument is ignored.
+ * After the relevant `load` resolves, `getMarker(id)` is synchronous and
+ * throws on invalid input rather than returning null. All `load` calls
+ * are idempotent and safe under concurrent invocation; no chunk is
+ * fetched twice.
  */
 import type { Canvas } from "../render/canvas";
 
@@ -131,12 +136,32 @@ export interface Family {
   /** Static, per-family geometry shared by every marker in the family. */
   readonly geometry: FamilyGeometry;
 
-  /** Idempotent. Returns the same resolved promise for every call. After
-   *  it resolves, `getMarker` is safe to call. */
-  load(): Promise<void>;
+  /** Ensure the family's data is loaded.
+   *
+   *  - No `ids`: do whatever minimum work is needed for the family to
+   *    function. For single-file families (e.g. ArUco dictionaries) this
+   *    fetches the file. For chunked families (mosaics split into per-id
+   *    chunks) this does nothing — the per-id fetch happens when `ids`
+   *    are supplied.
+   *  - With `ids`: ensure every chunk containing one of those ids is
+   *    loaded. Out-of-range ids are silently skipped; the loud error
+   *    happens at `getMarker` time.
+   *
+   *  Idempotent. Concurrent calls and post-resolution calls re-use any
+   *  in-flight fetch and never re-fetch a loaded chunk. The returned
+   *  promise resolves once all requested chunks have arrived. */
+  load(ids?: readonly number[]): Promise<void>;
+
+  /** True iff `id` is in range AND the data needed to retrieve its
+   *  marker has been loaded. Used by the renderer-facing
+   *  `MarkerProvider` to choose between drawing the marker and showing a
+   *  loading placeholder. Returns `false` for out-of-range ids (those
+   *  fail loudly at `getMarker`). */
+  isIdLoaded(id: number): boolean;
 
   /** Marker for `id`. Throws `RangeError` if `id < 0 || id >= count`.
-   *  Throws `Error` if called before `load()` resolves. */
+   *  Throws `Error` if the data needed to retrieve this id hasn't been
+   *  loaded yet (i.e. `isIdLoaded(id)` is `false`). */
   getMarker(id: number): Marker;
 }
 

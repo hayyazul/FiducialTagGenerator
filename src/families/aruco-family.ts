@@ -61,7 +61,9 @@ export class ArucoFamily implements Family {
     this.geometry = { edge, widthAtBorder: edge, outerShape: "square" };
   }
 
-  load(): Promise<void> {
+  load(_ids?: readonly number[]): Promise<void> {
+    // ArUco dictionaries ship as a single JSON file holding every
+    // marker, so per-id loading collapses to the same one-shot fetch.
     if (this.loadPromise !== null) return this.loadPromise;
     this.loadPromise = fetchDictionary(this.jsonPath).then((d) => {
       if (d.gridSize !== this.gridSize) {
@@ -85,6 +87,10 @@ export class ArucoFamily implements Family {
       this.loadPromise = null;
     });
     return this.loadPromise;
+  }
+
+  isIdLoaded(id: number): boolean {
+    return this.markers !== null && id >= 0 && id < this.count;
   }
 
   getMarker(id: number): Marker {

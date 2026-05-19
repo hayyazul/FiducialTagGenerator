@@ -24,6 +24,7 @@ import { ArucoFamily } from "./aruco-family";
 import { MosaicFamily } from "./mosaic-family";
 
 const ARUCO_DICT_BASE = `${import.meta.env.BASE_URL}resources/aruco_dictionaries`;
+const APRILTAG_BASE = `${import.meta.env.BASE_URL}resources/apriltag`;
 
 /** ArUco dictionaries shipped under `public/resources/aruco_dictionaries/`.
  *
@@ -60,39 +61,44 @@ const FAMILIES: Family[] = [
     name: "tag36h11",
     group: "Classic",
     count: 587,
+    chunkSize: 587,
     geometry: { edge: 10, widthAtBorder: 8, outerShape: "square" },
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tag36h11_mosaic.png`,
+    chunkBasePath: `${APRILTAG_BASE}/tag36h11`,
   }),
   new MosaicFamily({
     name: "tagStandard41h12",
     group: "Standard",
     count: 2115,
+    chunkSize: 2115,
     geometry: { edge: 9, widthAtBorder: 5, outerShape: "square" },
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard41h12_mosaic.png`,
+    chunkBasePath: `${APRILTAG_BASE}/tagStandard41h12`,
   }),
   new MosaicFamily({
     name: "tagStandard52h13",
     group: "Standard",
     count: 48714,
+    chunkSize: 256,
     geometry: { edge: 10, widthAtBorder: 6, outerShape: "square" },
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard52h13_mosaic.png`,
+    chunkBasePath: `${APRILTAG_BASE}/tagStandard52h13`,
   }),
   new MosaicFamily({
     name: "tagCustom48h12",
     group: "Custom",
     count: 42211,
+    chunkSize: 256,
     geometry: {
       edge: 10,
       widthAtBorder: 6,
       outerShape: "square",
       centerBlock: { row: 4, col: 4, size: 2 },
     },
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCustom48h12_mosaic.png`,
+    chunkBasePath: `${APRILTAG_BASE}/tagCustom48h12`,
   }),
   new MosaicFamily({
     name: "tagCircle21h7",
     group: "Circle",
     count: 38,
+    chunkSize: 38,
     geometry: {
       edge: 9,
       widthAtBorder: 5,
@@ -101,19 +107,20 @@ const FAMILIES: Family[] = [
       // cell of any tag in the family. See scripts/measure-circle-geometry.py.
       outerRadiusCells: 4.949747468305833,
     },
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle21h7_mosaic.png`,
+    chunkBasePath: `${APRILTAG_BASE}/tagCircle21h7`,
   }),
   new MosaicFamily({
     name: "tagCircle49h12",
     group: "Circle",
     count: 65535,
+    chunkSize: 256,
     geometry: {
       edge: 11,
       widthAtBorder: 5,
       outerShape: "circle",
       outerRadiusCells: 5.70087712549569,
     },
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle49h12_mosaic.png`,
+    chunkBasePath: `${APRILTAG_BASE}/tagCircle49h12`,
   }),
   ...ARUCO_DICTS.map(
     (d) =>
