@@ -60,6 +60,22 @@ const ARUCO_DICTS: ReadonlyArray<ArucoDictEntry> = [
 
 const FAMILIES: Family[] = [
   new MosaicFamily({
+    name: "tag16h5",
+    group: "AprilTag",
+    count: 30,
+    chunkSize: 30,
+    geometry: { edge: 8, widthAtBorder: 6, outerShape: "square" },
+    chunkBasePath: `${APRILTAG_BASE}/tag16h5`,
+  }),
+  new MosaicFamily({
+    name: "tag25h9",
+    group: "AprilTag",
+    count: 35,
+    chunkSize: 35,
+    geometry: { edge: 9, widthAtBorder: 7, outerShape: "square" },
+    chunkBasePath: `${APRILTAG_BASE}/tag25h9`,
+  }),
+  new MosaicFamily({
     name: "tag36h11",
     group: "AprilTag",
     count: 587,

@@ -47,6 +47,8 @@ const FAMILIES: FamilySpec[] = [
   { name: "tagCustom48h12",   tileSize_px: 10, count: 42211, chunkSize:   256 },
   { name: "tagCircle21h7",    tileSize_px:  9, count:    38, chunkSize:    38 },
   { name: "tagCircle49h12",   tileSize_px: 11, count: 65535, chunkSize:   256 },
+  { name: "tag16h5",          tileSize_px:  8, count:    30, chunkSize:    30 },
+  { name: "tag25h9",          tileSize_px:  9, count:    35, chunkSize:    35 },
 ];
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
