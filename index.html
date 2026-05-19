@@ -104,6 +104,35 @@
       .download-row details[open] { padding: 0.2rem 0 0.3rem; }
       .download-row details label { display: inline-flex; gap: 0.35rem;
                                     margin: 0.2rem 0 0; }
+      /* Minimal range slider styling: thin grey track, small square black
+         thumb. Matches the no-rounded-corners aesthetic of the form. */
+      input[type="range"].slider {
+        -webkit-appearance: none; appearance: none;
+        width: 10em; height: 1rem;
+        background: transparent;
+        vertical-align: middle;
+        margin: 0 0.25rem;
+        padding: 0;
+      }
+      input[type="range"].slider::-webkit-slider-runnable-track {
+        height: 2px; background: #ccc; border: 0;
+      }
+      input[type="range"].slider::-moz-range-track {
+        height: 2px; background: #ccc; border: 0;
+      }
+      input[type="range"].slider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 10px; height: 14px;
+        background: #222; border: 0; border-radius: 0;
+        margin-top: -6px;
+      }
+      input[type="range"].slider::-moz-range-thumb {
+        width: 10px; height: 14px;
+        background: #222; border: 0; border-radius: 0;
+      }
+      input[type="range"].slider:focus { outline: none; }
+      input[type="range"].slider:focus::-webkit-slider-thumb { background: #000; }
+      input[type="range"].slider:focus::-moz-range-thumb { background: #000; }
       input.invalid, select.invalid { border-color: #c00; }
       .field-error { display: inline-block; margin-left: 0.4rem;
                      color: #c00; font-size: 0.85em; }

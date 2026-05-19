@@ -367,6 +367,75 @@ async function handleDownload(): Promise<void> {
   }
 }
 
+/** rAF-batched recompute: at most one run per animation frame, regardless of
+ *  how many input events arrive between frames. The slider in particular
+ *  fires many input events per second during a drag; batching keeps the
+ *  preview smooth without queueing redundant renders. */
+let recomputeFramePending = false;
+function scheduleRecompute(): void {
+  if (recomputeFramePending) return;
+  recomputeFramePending = true;
+  requestAnimationFrame(() => {
+    recomputeFramePending = false;
+    recompute();
+  });
+}
+
+/** Wire a range slider to a number input so the two mirror each other.
+ *
+ *  Slider → number: write the slider value into the number box, run any
+ *  pre-recompute side effect, then schedule a recompute on the next frame.
+ *  Number → slider: only mirror when the typed value falls in the slider's
+ *  declared range. Outside that range we leave the slider where it is — the
+ *  number box stays authoritative for precise / out-of-range entry, and we
+ *  never silently clamp it. */
+function bindSliderToNumber(
+  numberId: string,
+  sliderId: string,
+  onSliderInput?: () => void,
+): void {
+  const num = document.getElementById(numberId) as HTMLInputElement | null;
+  const slider = document.getElementById(sliderId) as HTMLInputElement | null;
+  if (!num || !slider) return;
+  const sliderMin = Number.parseFloat(slider.min);
+  const sliderMax = Number.parseFloat(slider.max);
+  const initial = Number.parseFloat(num.value);
+  if (Number.isFinite(initial) && initial >= sliderMin && initial <= sliderMax) {
+    slider.value = String(initial);
+  }
+  slider.addEventListener("input", () => {
+    num.value = slider.value;
+    onSliderInput?.();
+    scheduleRecompute();
+  });
+  num.addEventListener("input", () => {
+    const v = Number.parseFloat(num.value);
+    if (Number.isFinite(v) && v >= sliderMin && v <= sliderMax) {
+      slider.value = String(v);
+    }
+  });
+}
+
+/** Mirror the tag-size and total-size sliders back to their number boxes
+ *  whenever recompute() changes those values (e.g. typing in Total size
+ *  rewrites Tag size, which should drag the tag-size slider with it). */
+function syncSlidersFromInputs(): void {
+  for (const [numberId, sliderId] of [
+    ["tagSize", "tagSizeSlider"],
+    ["totalSize", "totalSizeSlider"],
+  ] as const) {
+    const num = document.getElementById(numberId) as HTMLInputElement | null;
+    const slider = document.getElementById(sliderId) as HTMLInputElement | null;
+    if (!num || !slider) continue;
+    const v = Number.parseFloat(num.value);
+    const sMin = Number.parseFloat(slider.min);
+    const sMax = Number.parseFloat(slider.max);
+    if (Number.isFinite(v) && v >= sMin && v <= sMax && String(v) !== slider.value) {
+      slider.value = String(v);
+    }
+  }
+}
+
 function recompute(): void {
   const preview = document.getElementById("preview");
   if (!preview) return;
@@ -375,6 +444,7 @@ function recompute(): void {
   const s = readForm();
   const familyDef = getFamily(s.family);
   syncDependentFields(s, familyDef);
+  syncSlidersFromInputs();
 
   // Re-read after syncDependentFields, which may have refreshed the values.
   const effective = readForm();
@@ -835,11 +905,15 @@ function bootstrap(): void {
           <fieldset>
             <legend>Tag</legend>
             <label>Tag size (mm)
-              <input id="tagSize" type="number" value="40" step="0.5" min="1"><span class="field-error" id="tagSize-err"></span>
+              <input id="tagSize" type="number" value="40" step="0.5" min="1">
+              <input id="tagSizeSlider" class="slider" type="range" min="10" max="200" step="0.5" value="40" aria-label="Tag size slider">
+              <span class="field-error" id="tagSize-err"></span>
             </label>
             <span style="color:#888;font-size:0.85em">canonical (black-border) edge — what detectors expect</span>
             <label>Total size (mm)
-              <input id="totalSize" type="number" step="0.5" min="1"><span class="field-error" id="totalSize-err"></span>
+              <input id="totalSize" type="number" step="0.5" min="1">
+              <input id="totalSizeSlider" class="slider" type="range" min="10" max="300" step="0.5" value="40" aria-label="Total size slider">
+              <span class="field-error" id="totalSize-err"></span>
             </label>
             <span style="color:#888;font-size:0.85em">tag plus its quiet zone on every side; edit either, the other follows</span>
             <details style="margin-top:0.5rem">
@@ -901,8 +975,10 @@ function bootstrap(): void {
   // Runs before the form-level `recompute` (event reaches the target first),
   // so the rescaled tag size is in place by the time `recompute` reads it.
   document.getElementById("totalSize")?.addEventListener("input", handleTotalSizeInput);
-  form?.addEventListener("input", recompute);
-  form?.addEventListener("change", recompute);
+  bindSliderToNumber("tagSize", "tagSizeSlider");
+  bindSliderToNumber("totalSize", "totalSizeSlider", handleTotalSizeInput);
+  form?.addEventListener("input", scheduleRecompute);
+  form?.addEventListener("change", scheduleRecompute);
   document.getElementById("downloadBtn")?.addEventListener("click", () => {
     void handleDownload();
   });
