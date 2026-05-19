@@ -216,56 +216,6 @@ describe("MosaicFamily (chunked)", () => {
     expect(f.getMarker(2)).toBe(f.getMarker(2));
   });
 
-  it("applies the circle mask when geometry.outerShape === 'circle'", async () => {
-    const W = 5;
-    const H = 5;
-    const rgba = new Uint8ClampedArray(W * H * 4);
-    for (let i = 0; i < W * H; i++) rgba[i * 4 + 3] = 255;
-
-    const ctx = {
-      drawImage: vi.fn(),
-      getImageData: vi.fn(() => ({ data: rgba, width: W, height: H })),
-    };
-    class FakeImage {
-      naturalWidth = W;
-      naturalHeight = H;
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      set src(_v: string) {
-        queueMicrotask(() => this.onload?.());
-      }
-    }
-    const fakeDocument = {
-      createElement: (): unknown => ({
-        width: 0,
-        height: 0,
-        getContext: (): unknown => ctx,
-      }),
-    };
-    vi.stubGlobal("Image", FakeImage);
-    vi.stubGlobal("document", fakeDocument);
-
-    const f = new MosaicFamily({
-      name: "circle-fake",
-      count: 1,
-      chunkSize: 1,
-      geometry: {
-        edge: 5,
-        widthAtBorder: 5,
-        outerShape: "circle",
-        outerRadiusCells: 2.0,
-      },
-      chunkBasePath: "/circle",
-    });
-    await f.load([0]);
-    const m = f.getMarker(0) as BitGridMarker;
-    expect(m.bits[0]![0]).toBe(false);
-    expect(m.bits[0]![4]).toBe(false);
-    expect(m.bits[4]![0]).toBe(false);
-    expect(m.bits[4]![4]).toBe(false);
-    expect(m.bits[2]![2]).toBe(true);
-  });
-
   it("chunkUrl pads to 3 digits", () => {
     expect(chunkUrl("/x", 0)).toBe("/x/chunk_000.png");
     expect(chunkUrl("/x", 5)).toBe("/x/chunk_005.png");

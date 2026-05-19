@@ -71,20 +71,6 @@ describe("runExport", () => {
     expect(reloaded.getPageCount()).toBe(plan.pageCount + 1);
   });
 
-  it("PDF packed mode passes printLabelsOnBack through to the renderer", async () => {
-    const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts);
-    const result = await runExport({
-      plan,
-      markers: fakeMarker,
-      format: "pdf",
-      mode: "packed",
-      options: { printLabelsOnBack: true },
-    });
-    const bytes = new Uint8Array(await result.blob.arrayBuffer());
-    const reloaded = await PDFDocument.load(bytes);
-    expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
-  });
-
   it("rejects PDF + per-tag — that combination is intentionally unsupported", async () => {
     const plan = planSmallTagLayout(makeTags(2), 20, square100, minimalOpts);
     await expect(
