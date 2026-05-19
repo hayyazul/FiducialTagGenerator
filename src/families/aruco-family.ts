@@ -23,6 +23,7 @@ import { BitGridMarker, type Family, type FamilyGeometry, type Marker } from "./
 
 export interface ArucoFamilyOptions {
   readonly name: string;
+  readonly label?: string;
   readonly group?: string;
   readonly gridSize: number;
   readonly count: number;
@@ -38,6 +39,7 @@ interface ArucoDictionary {
 
 export class ArucoFamily implements Family {
   readonly name: string;
+  readonly label?: string;
   readonly group?: string;
   readonly count: number;
   readonly geometry: FamilyGeometry;
@@ -50,6 +52,7 @@ export class ArucoFamily implements Family {
 
   constructor(opts: ArucoFamilyOptions) {
     this.name = opts.name;
+    this.label = opts.label;
     this.group = opts.group;
     this.count = opts.count;
     this.gridSize = opts.gridSize;

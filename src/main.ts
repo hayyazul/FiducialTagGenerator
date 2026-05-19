@@ -28,7 +28,7 @@ function buildFamilyOptionsMarkup(): string {
         groupOpen = false;
       }
     }
-    out += `<option value="${escapeHtml(f.name)}">${escapeHtml(f.name)}</option>`;
+    out += `<option value="${escapeHtml(f.name)}">${escapeHtml(f.label ?? f.name)}</option>`;
   }
   if (groupOpen) out += `</optgroup>`;
   return out;
@@ -52,7 +52,7 @@ function buildSquareFamilyOptionsMarkup(): string {
         groupOpen = false;
       }
     }
-    out += `<option value="${escapeHtml(f.name)}">${escapeHtml(f.name)}</option>`;
+    out += `<option value="${escapeHtml(f.name)}">${escapeHtml(f.label ?? f.name)}</option>`;
   }
   if (groupOpen) out += `</optgroup>`;
   return out;

@@ -110,8 +110,16 @@ export interface Marker {
  *     lives at the `MarkerProvider` layer, not here.
  */
 export interface Family {
-  /** Stable registry key. Matches the family-picker `<option>` value. */
+  /** Stable registry key. Matches the family-picker `<option>` value
+   *  and flows through cache keys (`${name}#${id}`) and per-tag export
+   *  filenames — keep it free of spaces and punctuation. */
   readonly name: string;
+
+  /** Optional human-friendly label shown in the family picker. Falls back
+   *  to `name` when omitted. Use this when the registry identifier is
+   *  terser than what you want users to see (e.g. one dictionary that
+   *  is a superset of several published sizes). */
+  readonly label?: string;
 
   /** Optional UI grouping label. Families with the same `group` appear
    *  under one `<optgroup>` in the family picker. */

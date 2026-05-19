@@ -26,26 +26,32 @@ import { MosaicFamily } from "./mosaic-family";
 const ARUCO_DICT_BASE = `${import.meta.env.BASE_URL}resources/aruco_dictionaries`;
 
 /** ArUco dictionaries shipped under `public/resources/aruco_dictionaries/`.
- *  Order follows grid size then dictionary size; the original Garrido-
- *  Jurado dictionary and the ChArUco-mip "36h12" sit at either end. */
-const ARUCO_DICTS: ReadonlyArray<{ name: string; gridSize: number; count: number }> = [
+ *
+ *  For each grid size we ship only the 1000-marker dictionary: in the
+ *  upstream OpenCV ArUco design the smaller 50/100/250 dictionaries are
+ *  prefixes of the 1000 dictionary, so a user who wants e.g. the 4×4_50
+ *  set just uses IDs 0–49 of `aruco_4x4`. The size-list parenthetical in
+ *  the UI label flags this for users who recognise the standard size
+ *  buckets.
+ *
+ *  `aruco_original` and `aruco_mip_36h12` don't follow that prefix
+ *  scheme, so they're shipped as standalone entries. */
+interface ArucoDictEntry {
+  name: string;
+  label?: string;
+  gridSize: number;
+  count: number;
+  /** Filename stem under `public/resources/aruco_dictionaries/`. Defaults
+   *  to `name`; specify when the registry name and source file diverge. */
+  fileStem?: string;
+}
+
+const ARUCO_DICTS: ReadonlyArray<ArucoDictEntry> = [
   { name: "aruco_original", gridSize: 5, count: 1024 },
-  { name: "aruco_4x4_50", gridSize: 4, count: 50 },
-  { name: "aruco_4x4_100", gridSize: 4, count: 100 },
-  { name: "aruco_4x4_250", gridSize: 4, count: 250 },
-  { name: "aruco_4x4_1000", gridSize: 4, count: 1000 },
-  { name: "aruco_5x5_50", gridSize: 5, count: 50 },
-  { name: "aruco_5x5_100", gridSize: 5, count: 100 },
-  { name: "aruco_5x5_250", gridSize: 5, count: 250 },
-  { name: "aruco_5x5_1000", gridSize: 5, count: 1000 },
-  { name: "aruco_6x6_50", gridSize: 6, count: 50 },
-  { name: "aruco_6x6_100", gridSize: 6, count: 100 },
-  { name: "aruco_6x6_250", gridSize: 6, count: 250 },
-  { name: "aruco_6x6_1000", gridSize: 6, count: 1000 },
-  { name: "aruco_7x7_50", gridSize: 7, count: 50 },
-  { name: "aruco_7x7_100", gridSize: 7, count: 100 },
-  { name: "aruco_7x7_250", gridSize: 7, count: 250 },
-  { name: "aruco_7x7_1000", gridSize: 7, count: 1000 },
+  { name: "aruco_4x4", label: "aruco_4x4 (50, 100, 250, 1000)", gridSize: 4, count: 1000, fileStem: "aruco_4x4_1000" },
+  { name: "aruco_5x5", label: "aruco_5x5 (50, 100, 250, 1000)", gridSize: 5, count: 1000, fileStem: "aruco_5x5_1000" },
+  { name: "aruco_6x6", label: "aruco_6x6 (50, 100, 250, 1000)", gridSize: 6, count: 1000, fileStem: "aruco_6x6_1000" },
+  { name: "aruco_7x7", label: "aruco_7x7 (50, 100, 250, 1000)", gridSize: 7, count: 1000, fileStem: "aruco_7x7_1000" },
   { name: "aruco_mip_36h12", gridSize: 6, count: 250 },
 ];
 
@@ -113,10 +119,11 @@ const FAMILIES: Family[] = [
     (d) =>
       new ArucoFamily({
         name: d.name,
+        label: d.label,
         group: "ArUco",
         gridSize: d.gridSize,
         count: d.count,
-        jsonPath: `${ARUCO_DICT_BASE}/${d.name}.min.json`,
+        jsonPath: `${ARUCO_DICT_BASE}/${d.fileStem ?? d.name}.min.json`,
       }),
   ),
 ];
