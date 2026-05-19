@@ -103,20 +103,36 @@ interface FormState {
 const CUSTOM_PAPER_MIN_MM = 50;
 const CUSTOM_PAPER_MAX_MM = 1200;
 
-// Tracks which families have finished `load()`. `Family` instances live in
-// the registry; this set is just a readiness gate. The MarkerProvider
-// below reads it on every lookup so an in-flight load surfaces as a
-// placeholder rather than a thrown error.
-const loadedFamilies = new Set<string>();
-
+// Readiness is now per (family, id) — families fetch tag bitmaps in
+// chunks, so the same family may be ready for some ids and not others.
+// The MarkerProvider gates each lookup on `family.isIdLoaded(id)` so
+// an in-flight chunk surfaces as a placeholder rather than a thrown
+// error. No module-level "loaded" set: the family instance owns that
+// state.
 const markerProvider: MarkerProvider = {
   getMarker(name, id) {
-    if (!loadedFamilies.has(name)) return null;
     const f = getFamily(name);
-    if (!f) return null;
+    if (!f || !f.isIdLoaded(id)) return null;
     return f.getMarker(id);
   },
 };
+
+/** True iff every tag and every nested sub-tag has its chunk loaded. */
+function isTagFullyLoaded(t: TagSpec): boolean {
+  const f = getFamily(t.family);
+  if (!f || !f.isIdLoaded(t.id)) return false;
+  if (t.subtag && !isTagFullyLoaded(t.subtag)) return false;
+  return true;
+}
+
+/** Walk the tag chain (including all sub-tag depths) and add each
+ *  (family, id) to `out`. */
+function collectIdsByFamily(t: TagSpec, out: Map<string, Set<number>>): void {
+  const set = out.get(t.family) ?? new Set<number>();
+  set.add(t.id);
+  out.set(t.family, set);
+  if (t.subtag) collectIdsByFamily(t.subtag, out);
+}
 
 // SVG preview rasterises bit grids to small PNG <image> elements (one per
 // tag) for fast DOM updates on packed pages. The DOM-backed rasteriser is
@@ -125,9 +141,12 @@ const markerProvider: MarkerProvider = {
 // render.
 const previewRasterizer = createDomRasterizer();
 
-// Cached most recent valid plan, used by the Download button.
+// Cached most recent valid plan, used by the Download button. Held
+// alongside the tag chain that produced it so readiness checks
+// (download button, "Loading bitmaps…" indicator) know which
+// (family, id) pairs to consult.
 let currentPlan: LayoutPlan | null = null;
-let currentFamily: string | null = null;
+let currentTags: TagSpec[] | null = null;
 
 function field(id: string): HTMLInputElement | HTMLSelectElement {
   const el = document.getElementById(id);
@@ -345,24 +364,17 @@ function failPreview(note: string, isProblem = true): void {
   if (preview) preview.innerHTML = "";
   showInfo(note, isProblem);
   currentPlan = null;
-  currentFamily = null;
+  currentTags = null;
   syncDownloadButton();
 }
 
 function syncDownloadButton(): void {
   const btn = document.getElementById("downloadBtn") as HTMLButtonElement | null;
   if (!btn) return;
-  let allSubsLoaded = true;
-  if (currentPlan) {
-    for (const lvl of currentPlan.subtagLevels) {
-      if (!loadedFamilies.has(lvl.familyName)) { allSubsLoaded = false; break; }
-    }
-  }
   const ready =
     currentPlan !== null &&
-    currentFamily !== null &&
-    loadedFamilies.has(currentFamily) &&
-    allSubsLoaded;
+    currentTags !== null &&
+    currentTags.every(isTagFullyLoaded);
   btn.disabled = !ready;
   btn.title = ready
     ? ""
@@ -372,7 +384,7 @@ function syncDownloadButton(): void {
 }
 
 async function handleDownload(): Promise<void> {
-  if (!currentPlan || !currentFamily || !loadedFamilies.has(currentFamily)) return;
+  if (!currentPlan || !currentTags || !currentTags.every(isTagFullyLoaded)) return;
   const btn = document.getElementById("downloadBtn") as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   try {
@@ -546,18 +558,14 @@ function recompute(): void {
   // Re-read after syncDependentFields, which may have refreshed the values.
   const effective = readForm();
 
-  // Lazy-load the family the first time it's selected.
-  if (s.family && familyDef && !loadedFamilies.has(s.family)) {
-    void familyDef.load().then(
-      () => {
-        loadedFamilies.add(s.family);
-        syncDownloadButton();
-        recompute();
-      },
-      (err: unknown) => {
-        console.error("failed to load family", s.family, err);
-      },
-    );
+  // Preflight: kick off any family-level fetch that doesn't depend on
+  // which ids the user will pick. ArucoFamily fetches its JSON; chunked
+  // MosaicFamily does nothing here (chunks are fetched once we know the
+  // id range, below). Idempotent — repeated calls are free.
+  if (s.family && familyDef) {
+    void familyDef.load().catch((err: unknown) => {
+      console.error("failed to load family", s.family, err);
+    });
   }
 
   syncSubtagChain();
@@ -694,7 +702,32 @@ function recompute(): void {
 
   plan.subtagLevels = subtagResult.levels;
 
-  const loaded = loadedFamilies.has(effective.family) && subtagResult.allFamiliesLoaded;
+  // Trigger fetches for any chunks that aren't loaded yet. Each family
+  // load(ids) is idempotent and deduplicates in-flight fetches, so it's
+  // safe to call on every recompute; the guard below just avoids
+  // chaining a no-op recompute when nothing was actually missing.
+  const allLoaded = tags.every(isTagFullyLoaded);
+  if (!allLoaded) {
+    const idsByFamily = new Map<string, Set<number>>();
+    for (const t of tags) collectIdsByFamily(t, idsByFamily);
+    const fetches: Promise<void>[] = [];
+    for (const [name, idSet] of idsByFamily) {
+      const fam = getFamily(name);
+      if (!fam) continue;
+      fetches.push(
+        fam.load(Array.from(idSet)).catch((err: unknown) => {
+          console.error("failed to load chunks for", name, err);
+        }),
+      );
+    }
+    if (fetches.length > 0) {
+      void Promise.all(fetches).then(() => {
+        syncDownloadButton();
+        recompute();
+      });
+    }
+  }
+  const loaded = allLoaded;
   const cellWidth_mm =
     cutShape.kind === "circle"
       ? 2 * (cutShape.outerRadius_mm + effective.quietZone_mm)
@@ -731,7 +764,7 @@ function recompute(): void {
       )}</section>`;
     }).join("") || `<p style="color:#888">No pages — add some tags.</p>`;
   currentPlan = plan;
-  currentFamily = effective.family;
+  currentTags = tags;
   syncDownloadButton();
 }
 
@@ -839,7 +872,6 @@ function removeSubtagLevelsFrom(container: HTMLElement, fromDepth: number): void
 interface SubtagChainResult {
   subtagForIndex: (i: number) => TagSpec | undefined;
   levels: SubtagLevel[];
-  allFamiliesLoaded: boolean;
 }
 
 /** Assign one unique sub-tag ID per parent tag, picking the smallest IDs
@@ -866,7 +898,6 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
   const levels: SubtagLevel[] = [];
   const idChains: number[][] = [];
   const ancestorFamilies = new Set<string>([parentFamilyName]);
-  let allLoaded = true;
 
   while (depth < MAX_SUBTAG_DEPTH && curDef && isRecursiveFamily(curDef)) {
     const subSelect = document.getElementById(`subFamily-${depth}`) as HTMLSelectElement | null;
@@ -932,13 +963,12 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
     levels.push({ familyName: subFamilyName, tileSize_mm: subTile_mm, tagSize_mm: subTagSize_mm });
     idChains.push(subIds);
 
-    if (!loadedFamilies.has(subFamilyName)) {
-      allLoaded = false;
-      void subDef.load().then(
-        () => { loadedFamilies.add(subFamilyName); syncDownloadButton(); recompute(); },
-        (err: unknown) => { console.error("failed to load sub-family", subFamilyName, err); },
-      );
-    }
+    // Preflight: kick off the sub-family's family-level load. For
+    // ArucoFamily this fetches the JSON; for MosaicFamily it's a no-op
+    // (chunks are fetched by the unified `load(ids)` pass in recompute).
+    void subDef.load().catch((err: unknown) => {
+      console.error("failed to load sub-family", subFamilyName, err);
+    });
 
     curFamilyName = subFamilyName;
     curDef = subDef;
@@ -948,7 +978,7 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
   }
 
   if (levels.length === 0) {
-    return { subtagForIndex: () => undefined, levels: [], allFamiliesLoaded: true };
+    return { subtagForIndex: () => undefined, levels: [] };
   }
 
   return {
@@ -960,7 +990,6 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
       return spec;
     },
     levels,
-    allFamiliesLoaded: allLoaded,
   };
 }
 
