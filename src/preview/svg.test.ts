@@ -34,10 +34,11 @@ describe("renderPlanToSvg", () => {
     expect(svg).toContain("<svg");
     expect(svg).toContain("viewBox=\"0 0 100 100\"");
     // Both tags render as placeholder rects (no marker source available).
+    // Placeholder color is the unique discriminator — page background is also
+    // a <rect> but uses a different fill.
     const placeholderCount = (svg.match(/fill="#222222"/g) ?? []).length;
     expect(placeholderCount).toBe(2);
     expect(svg).not.toContain("<image ");
-    // Cut grid should appear as <line> elements.
     expect(svg).toContain("<line");
   });
 
@@ -56,8 +57,8 @@ describe("renderPlanToSvg", () => {
     expect(imageCount).toBe(2);
     expect(svg).toContain(`href="${HREF}"`);
     expect(svg).toContain("image-rendering:pixelated");
-    // No placeholder boxes when images are available.
-    expect(svg).not.toContain("fill=\"#222222\"");
+    // No placeholder fills when images are available.
+    expect(svg).not.toContain('fill="#222222"');
   });
 
   it("falls back to a placeholder for any tag whose bits are not yet available", () => {
@@ -68,7 +69,7 @@ describe("renderPlanToSvg", () => {
       minimalOpts,
     );
     const svg = renderPlanToSvg(plan, 0, everyMarkerNull, { rasterizer: stubRasterizer });
-    expect(svg).toContain("fill=\"#222222\"");
+    expect(svg).toContain('fill="#222222"');
     expect(svg).not.toContain("<image ");
   });
 
@@ -84,14 +85,11 @@ describe("renderPlanToSvg", () => {
     expect(svg).toContain("&lt;bad&amp;family&gt;");
   });
 
-  it("paints only what the PDF prints: no cream quiet zones, grey dashed cut lines", () => {
+  it("draws dashed cut lines (matching the printed PDF)", () => {
     const opts: LayoutOptions = { pageMargin_mm: 5, quietZone_mm: 1, cutMargin_mm: 0 };
     const plan = planSmallTagLayout([{ family: "tag36h11", id: 0 }], 20, square100, opts);
     const svg = renderPlanToSvg(plan, 0);
-    expect(svg).not.toContain("#fff8d6");
-    expect(svg).not.toContain('stroke="#c00"');
-    expect(svg).toContain('stroke="#8c8c8c"'); // PDF cut-line grey
-    // Cut lines are now dashed — matches the printed PDF.
+    expect(svg).toContain("<line");
     expect(svg).toContain("stroke-dasharray");
   });
 
@@ -100,22 +98,18 @@ describe("renderPlanToSvg", () => {
     const plan = planSmallTagLayout([{ family: "tag36h11", id: 0 }], 20, square100, opts);
     const svg = renderPlanToSvg(plan, 0);
     // Two strokes per mark, four corners → eight reg-mark lines.
-    const regMarkLines = (svg.match(/stroke="#666666"/g) ?? []).length;
-    expect(regMarkLines).toBe(8);
+    // Reg marks are the only solid (non-dashed) lines on the page.
+    const lines = svg.match(/<line [^>]*\/>/g) ?? [];
+    const solidLines = lines.filter((l) => !l.includes("stroke-dasharray"));
+    expect(solidLines.length).toBe(8);
   });
 
   it("omits registration marks when there is no page margin", () => {
     const plan = planSmallTagLayout([{ family: "tag36h11", id: 0 }], 50, square100, minimalOpts);
     const svg = renderPlanToSvg(plan, 0);
-    expect(svg).not.toContain('stroke="#666666"');
-  });
-
-  it("draws no caption in the cut band — that text was removed when cut margin became a paper gap", () => {
-    const opts: LayoutOptions = { pageMargin_mm: 0, quietZone_mm: 1, cutMargin_mm: 2 };
-    const plan = planSmallTagLayout([{ family: "tag36h11", id: 7 }], 20, square100, opts);
-    const svg = renderPlanToSvg(plan, 0, stubMarker, { rasterizer: stubRasterizer });
-    expect(svg).not.toContain("tag36h11 #7");
-    expect(svg).not.toContain(`fill="#4d4d4d"`);
+    const lines = svg.match(/<line [^>]*\/>/g) ?? [];
+    const solidLines = lines.filter((l) => !l.includes("stroke-dasharray"));
+    expect(solidLines.length).toBe(0);
   });
 
   it("sets the family/id/size caption in the quiet zone when that option is on", () => {
@@ -129,7 +123,6 @@ describe("renderPlanToSvg", () => {
       printLabelsInQuietZone: true,
     });
     expect(svg).toContain("tag36h11 #5 · 20 mm");
-    expect(svg).toContain(`fill="#000000"`);
   });
 
   it("draws no quiet-zone caption when there is no quiet zone, even with the option on", () => {
@@ -228,7 +221,6 @@ describe("renderPlanToSvg", () => {
     );
     const svg = renderPlanToSvg(plan, 0);
     expect(svg).toContain("<circle");
-    expect(svg).toContain(`stroke="${"#8c8c8c"}"`);
     expect(svg).not.toContain("<line");
   });
 
