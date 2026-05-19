@@ -78,12 +78,24 @@
                      border-right: 0; border-bottom: 1px solid #eee; }
         .preview-pane { flex: 0 0 auto; width: 100%; }
       }
-      fieldset { margin: 0 0 0.75rem; padding: 0.5rem 0.75rem; border: 1px solid #ccc; }
-      fieldset label { display: inline-block; margin-right: 1rem; margin-bottom: 0.25rem; }
+      fieldset { margin: 0 0 1rem; padding: 0.5rem 0.75rem; border: 1px solid #ccc;
+                 /* Inset accent on the left edge, revealed on :focus-within.
+                    Stays in layout regardless of state — no shift on focus. */
+                 box-shadow: inset 2px 0 0 transparent;
+                 transition: box-shadow 120ms ease; }
+      fieldset:focus-within { box-shadow: inset 2px 0 0 #222; }
+      fieldset legend { font-size: 1rem; font-weight: 600; padding: 0 0.25rem; }
+      fieldset label { display: inline-block; margin-right: 1rem; margin-bottom: 0.35rem; }
       input[type="number"], input[type="text"], select {
         padding: 0.15rem 0.3rem;
         border: 1px solid #ccc; border-radius: 0;
         font: inherit; color: inherit; background: #fff;
+        transition: border-color 80ms ease, box-shadow 80ms ease;
+      }
+      input[type="number"]:focus, input[type="text"]:focus, select:focus {
+        outline: none;
+        border-color: #222;
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
       }
       input[type="number"], input[type="text"] { width: 8em; }
       input#ids { width: 16em; }

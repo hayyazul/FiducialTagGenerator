@@ -91,6 +91,9 @@ clarity* — like a well-made instrument panel, not a brochure.
   `#222` border with a subtle box-shadow — sharper and more deliberate
   than the fuzzy blue ring.
 
+**Injected Human Notes**
+ While STYLES.md and this document explain things you should do, I am going to explain the philosophy and aesthetic I am trying to accomplish. I really like Japanese-style clutter sites. While this site does not need to be cluttered, emphasis on need--- if it had to be cluttered, I would err on that side than oversimplicity---, it should not hide things behind a million nested layers, space things out so the user has to mouse-marathon around to look at things, or really, stay longer than they need to. They get in, grok what they need to do to get what they want, get it, get out. All the info they need is there. That is why the extra info seo fluff is tucked below the  rest of the website, and it is more than possible a user will never know it exists. This style is heterodox, anti-minimalist-for-the-sake-of-minimalism, simple because of what it is rather than what it strives to be, and anti-modern 'clean' design. This section doesn't contain any hard rules, just a vibe and mindset you should adopt when implementing the above.
+
 **Files:** `index.html` (CSS only).
 
 ---
