@@ -1184,13 +1184,13 @@ function bootstrap(): void {
             <legend>Tag Dimensions</legend>
             <label>Tag size (mm)
               <input id="tagSize" class="no-spin" type="number" value="40" step="0.5" min="1">
-              <input id="tagSizeSlider" class="slider" type="range" min="10" max="200" step="0.5" value="40" aria-label="Tag size slider">
+              <input id="tagSizeSlider" class="slider" type="range" min="10" max="200" step="0.1" value="40" aria-label="Tag size slider">
               <span class="field-error" id="tagSize-err"></span>
             </label>
             <span class="note">canonical (black-border) edge — what detectors expect</span>
             <label>Total size (mm)
               <input id="totalSize" class="no-spin" type="number" step="0.5" min="1">
-              <input id="totalSizeSlider" class="slider" type="range" min="10" max="300" step="0.5" value="40" aria-label="Total size slider">
+              <input id="totalSizeSlider" class="slider" type="range" min="10" max="300" step="0.1" value="40" aria-label="Total size slider">
               <span class="field-error" id="totalSize-err"></span>
             </label>
             <span class="note">tag plus its quiet zone on every side; edit either, the other follows</span>
