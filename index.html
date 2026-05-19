@@ -48,11 +48,14 @@
       .site-header { padding: 0.6rem 1rem 0.55rem; border-bottom: 1px solid #eee; flex: 0 0 auto; }
       .site-header h1 { margin: 0; font-size: 1.2rem; font-weight: 600; }
       .site-header .tagline { margin: 0.15rem 0 0; color: #555; font-size: 0.88rem; }
-      /* Pane proportion is controlled by --form-flex (form-pane's flex-grow).
-         Preview is fixed at flex-grow: 2 so extra space is distributed in the
-         ratio form:preview = var(--form-flex):2. The debug bar at the top of
-         the page lets the user tune this live. */
-      :root { --form-flex: 1; }
+      /* Form-pane gets flex-grow 1.2, preview gets 2 — preview is the focus
+         of the tool, but the form needs enough room to fit two inputs and a
+         slider on the same row. Locked from interactive tuning. */
+      /* --page-size is the width of each preview page as a percentage of
+         the preview pane; controlled by the debug bar so the user can find
+         a comfortable size. At 100 the page fills the pane (one column);
+         drop it under 50 and a second page fits beside the first. */
+      :root { --page-size: 100; }
       .debug-bar { padding: 0.4rem 1rem; border-bottom: 1px solid #eee;
                    font-size: 0.85rem; color: #555; flex: 0 0 auto;
                    display: flex; align-items: center; gap: 0.5rem;
@@ -60,10 +63,13 @@
       .debug-bar label { font-weight: 600; color: #c00; }
       .debug-bar input[type="number"] { width: 4em; }
       .debug-bar .computed { color: #888; font-variant-numeric: tabular-nums; }
+      /* Viewport-pinned app shell: subtract the header + debug bar so the
+         form and preview scroll inside the remaining space instead of the
+         whole page scrolling. */
       #app { flex: 0 0 auto; height: calc(100vh - 6.5rem); display: flex; }
-      .form-pane { flex: var(--form-flex) 1 0; min-width: 280px;
+      .form-pane { flex: 1.2 1 0; min-width: 280px;
                    padding: 0.75rem 1rem;
-                   overflow-y: auto; box-sizing: border-box;
+                   overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
                    border-right: 1px solid #eee; }
       .preview-pane { flex: 2 1 0; min-width: 0;
                       padding: 0.75rem 1rem 2.5rem;
@@ -82,7 +88,21 @@
                       background-repeat: no-repeat;
                       background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
                       background-attachment: local, local, scroll, scroll; }
-      .preview-pane #preview { max-width: min(100%, 1200px); margin: 0 auto; }
+      /* Pages are flex items: they wrap when there's room and stay centered
+         in the preview pane. --page-size is a percentage of the pane width;
+         at 100 a page fills the row, at ~48 two fit side-by-side with a gap. */
+      .preview-pane #preview { display: flex; flex-wrap: wrap;
+                               justify-content: center; align-content: flex-start;
+                               gap: 0.5rem; margin: 0 auto;
+                               max-width: min(100%, 1600px); }
+      .preview-pane #preview > section {
+        flex: 0 0 calc(var(--page-size) * 1% - 0.25rem);
+        max-width: 100%;
+        margin: 0;
+        min-width: 0;
+      }
+      .preview-pane #preview > section svg { width: 100%; height: auto; display: block; }
+      .preview-pane #preview > section h3 { text-align: center; }
 
       @media (max-width: 640px) {
         #app { height: auto; flex-direction: column; }
@@ -199,14 +219,15 @@
       <h1>ArUco and AprilTag Generator</h1>
       <p class="tagline">Generate ready-to-print AprilTags and ArUco markers as PDFs. Free, opensource, browser-based, with built-in support for recursive nested tags.</p>
     </header>
-    <!-- TEMPORARY: pane-ratio debug control. The slider sets form-pane's
-         flex-grow (preview-pane is fixed at 2). Use this to find the ideal
-         ratio, then we'll bake it in and remove the bar. -->
+    <!-- TEMPORARY: preview page-size debug control. The slider sets each
+         preview page's width as a percentage of the preview pane. At 100
+         one page fills the row; below ~50 two pages fit side by side. Use
+         this to find the ideal size, then we'll bake it in and remove. -->
     <div class="debug-bar" id="debugBar">
-      <label for="debugFormFlex">DEBUG · form weight</label>
-      <input type="range" id="debugFormFlex" class="slider" min="0.2" max="3" step="0.05" value="1">
-      <input type="number" id="debugFormFlexNum" min="0.2" max="3" step="0.05" value="1">
-      <span class="computed" id="debugFormShare"></span>
+      <label for="debugPageSize">DEBUG · page size %</label>
+      <input type="range" id="debugPageSize" class="slider" min="40" max="100" step="1" value="100">
+      <input type="number" id="debugPageSizeNum" min="40" max="100" step="1" value="100">
+      <span class="computed" id="debugPageInfo"></span>
     </div>
     <main id="app"></main>
     <footer class="site-footer">

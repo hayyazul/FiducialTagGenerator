@@ -1067,27 +1067,28 @@ function bootstrap(): void {
   document.getElementById("downloadBtn")?.addEventListener("click", () => {
     void handleDownload();
   });
-  wireDebugFormFlex();
+  wireDebugPageSize();
   recompute();
 }
 
-/** Temporary debug control. The bar at the top of the page exposes the form
- *  pane's flex-grow value so the user can interactively find the ideal
- *  form-to-preview ratio. Preview pane is fixed at flex-grow: 2; the form's
- *  share is `formFlex / (formFlex + 2)`. Mirrors slider ↔ number ↔ computed
- *  share readout. Will be removed once the ratio is locked in. */
-function wireDebugFormFlex(): void {
-  const slider = document.getElementById("debugFormFlex") as HTMLInputElement | null;
-  const num = document.getElementById("debugFormFlexNum") as HTMLInputElement | null;
-  const out = document.getElementById("debugFormShare");
+/** Temporary debug control. The bar at the top of the page exposes the
+ *  per-page width as a percentage of the preview pane (`--page-size`). At
+ *  100 each page fills the row; below ~50 two pages fit side by side with
+ *  a small gap. Mirrors slider ↔ number ↔ computed columns readout. Will
+ *  be removed once the right size is locked in. */
+function wireDebugPageSize(): void {
+  const slider = document.getElementById("debugPageSize") as HTMLInputElement | null;
+  const num = document.getElementById("debugPageSizeNum") as HTMLInputElement | null;
+  const out = document.getElementById("debugPageInfo");
   if (!slider || !num || !out) return;
-  const PREVIEW_FLEX = 2;
   const apply = (value: string): void => {
     const v = Number.parseFloat(value);
-    if (!Number.isFinite(v) || v <= 0) return;
-    document.documentElement.style.setProperty("--form-flex", String(v));
-    const share = v / (v + PREVIEW_FLEX);
-    out.textContent = `→ form ${(share * 100).toFixed(1)}% / preview ${((1 - share) * 100).toFixed(1)}%  (form-flex=${v})`;
+    if (!Number.isFinite(v) || v <= 0 || v > 100) return;
+    document.documentElement.style.setProperty("--page-size", String(v));
+    // Each page takes (v - 0.25rem) of the row; with the 0.5rem flex gap the
+    // count that fits is floor((100 + gap%) / (v + gap%)). Treat 0.5rem ≈ 0.5%.
+    const cols = Math.max(1, Math.floor(100.5 / (v + 0.5)));
+    out.textContent = `→ ${v}% wide · ${cols} page${cols === 1 ? "" : "s"} per row`;
   };
   slider.addEventListener("input", () => {
     num.value = slider.value;
