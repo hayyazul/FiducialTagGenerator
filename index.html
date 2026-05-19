@@ -51,23 +51,14 @@
       /* Form-pane gets flex-grow 1.2, preview gets 2 — preview is the focus
          of the tool, but the form needs enough room to fit two inputs and a
          slider on the same row. Locked from interactive tuning. */
-      /* --page-max-width is an upper bound on each preview page in px. Pages
-         render at this width when there's room, shrink to fit narrower
-         preview panes, and wrap so multiple fit side by side when there's
-         room for them. Controlled by the debug bar; the right value is
-         baked in once it's chosen. */
-      :root { --page-max-width: 540px; }
-      .debug-bar { padding: 0.4rem 1rem; border-bottom: 1px solid #eee;
-                   font-size: 0.85rem; color: #555; flex: 0 0 auto;
-                   display: flex; align-items: center; gap: 0.5rem;
-                   background: #fafafa; }
-      .debug-bar label { font-weight: 600; color: #c00; }
-      .debug-bar input[type="number"] { width: 4em; }
-      .debug-bar .computed { color: #888; font-variant-numeric: tabular-nums; }
-      /* Viewport-pinned app shell: subtract the header + debug bar so the
-         form and preview scroll inside the remaining space instead of the
-         whole page scrolling. */
-      #app { flex: 0 0 auto; height: calc(100vh - 6.5rem); display: flex; }
+      /* Upper bound on each preview page in px. Pages render at this width
+         when there's room, shrink to fit narrower preview panes, and wrap
+         so multiple fit side by side when the pane is wide enough. */
+      :root { --page-max-width: 400px; }
+      /* Viewport-pinned app shell: subtract the header so the form and
+         preview scroll inside the remaining space instead of the whole
+         page scrolling. */
+      #app { flex: 0 0 auto; height: calc(100vh - 4.5rem); display: flex; }
       .form-pane { flex: 1.2 1 0; min-width: 280px;
                    padding: 0.75rem 1rem;
                    overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
@@ -191,6 +182,9 @@
       input[type="range"].slider:focus { outline: none; }
       input[type="range"].slider:focus::-webkit-slider-thumb { background: #000; }
       input[type="range"].slider:focus::-moz-range-thumb { background: #000; }
+      input[type="range"].slider:disabled { opacity: 0.45; cursor: not-allowed; }
+      input[type="range"].slider:disabled::-webkit-slider-thumb { background: #888; }
+      input[type="range"].slider:disabled::-moz-range-thumb { background: #888; }
       input.invalid, select.invalid { border-color: #c00; }
       .field-error { display: inline-block; margin-left: 0.4rem;
                      color: #c00; font-size: 0.85em; }
@@ -222,18 +216,6 @@
       <h1>ArUco and AprilTag Generator</h1>
       <p class="tagline">Generate ready-to-print AprilTags and ArUco markers as PDFs. Free, opensource, browser-based, with built-in support for recursive nested tags.</p>
     </header>
-    <!-- TEMPORARY: preview page max-width debug control. The slider sets
-         the upper bound on each preview page's width in px. Pages render
-         at this width when there's room; the preview pane wraps multiple
-         pages onto the same row when it can, and shrinks them below this
-         bound when the pane is narrower. Use this to find the ideal size,
-         then we'll bake it in and remove the bar. -->
-    <div class="debug-bar" id="debugBar">
-      <label for="debugPageSize">DEBUG · page max-width (px)</label>
-      <input type="range" id="debugPageSize" class="slider" min="240" max="1000" step="10" value="540">
-      <input type="number" id="debugPageSizeNum" min="240" max="1000" step="10" value="540">
-      <span class="computed" id="debugPageInfo"></span>
-    </div>
     <main id="app"></main>
     <footer class="site-footer">
       <h2>About this generator</h2>

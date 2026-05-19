@@ -235,6 +235,10 @@ function syncDependentFields(s: FormState, familyDef: TagFamilyDef | undefined):
   qz.disabled = !s.overrideAdvanced;
   cm.disabled = !s.overrideAdvanced;
   total.disabled = s.overrideAdvanced;
+  // The total-size slider mirrors the total-size number input — keep them in
+  // lockstep so toggling the override greys both out together.
+  const totalSlider = document.getElementById("totalSizeSlider") as HTMLInputElement | null;
+  if (totalSlider) totalSlider.disabled = s.overrideAdvanced;
 
   const customRow = document.getElementById("customPaperRow");
   if (customRow) {
@@ -1067,45 +1071,7 @@ function bootstrap(): void {
   document.getElementById("downloadBtn")?.addEventListener("click", () => {
     void handleDownload();
   });
-  wireDebugPageSize();
   recompute();
-}
-
-/** Temporary debug control. The bar at the top of the page exposes the
- *  upper bound on each preview page's width (`--page-max-width`, px). Pages
- *  render at this width when there's room, shrink to fit narrower preview
- *  panes, and wrap onto multiple rows when the pane has room for them.
- *  Mirrors slider ↔ number ↔ computed columns readout. Will be removed
- *  once the right value is locked in. */
-function wireDebugPageSize(): void {
-  const slider = document.getElementById("debugPageSize") as HTMLInputElement | null;
-  const num = document.getElementById("debugPageSizeNum") as HTMLInputElement | null;
-  const out = document.getElementById("debugPageInfo");
-  if (!slider || !num || !out) return;
-  const previewPane = document.querySelector<HTMLElement>(".preview-pane");
-  const apply = (value: string): void => {
-    const v = Number.parseFloat(value);
-    if (!Number.isFinite(v) || v <= 0) return;
-    document.documentElement.style.setProperty("--page-max-width", `${v}px`);
-    // How many pages fit in the current preview pane width at this max-width?
-    const paneWidth = previewPane?.clientWidth ?? 0;
-    const gapPx = 8; // matches gap: 0.5rem (≈ 8 px at default 16 px root)
-    const cols = paneWidth > 0
-      ? Math.max(1, Math.floor((paneWidth + gapPx) / (v + gapPx)))
-      : 1;
-    out.textContent = `→ ${v}px max · ${cols} page${cols === 1 ? "" : "s"} per row (pane ${paneWidth}px)`;
-  };
-  slider.addEventListener("input", () => {
-    num.value = slider.value;
-    apply(slider.value);
-  });
-  num.addEventListener("input", () => {
-    slider.value = num.value;
-    apply(num.value);
-  });
-  // Re-evaluate the columns readout when the viewport resizes.
-  window.addEventListener("resize", () => apply(slider.value));
-  apply(slider.value);
 }
 
 bootstrap();
