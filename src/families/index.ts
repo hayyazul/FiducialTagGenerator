@@ -1,279 +1,126 @@
 /**
- * Tag-family registry. Each family ships as a single PNG mosaic stored at
- * `mosaicPath`, served as a static asset by Vite. The mosaic format,
- * shared with the upstream `apriltag-imgs` repository, is:
+ * Marker family registry. Re-exports the core abstractions defined in
+ * `./family.ts` and instantiates one `Family` per shipped family.
  *
- *   - A grid of square tiles, each `tileSize_px × tileSize_px`.
- *   - Tiles are separated by a 1-pixel black line (so the stride from the
- *     left edge of one tile to the next is `tileSize_px + 1`).
- *   - Tile (col, row) holds tag id = row * cols + col, with row 0 at the
- *     top, col 0 at the left.
- *   - The tile is the tag bitmap exactly as it should be printed; any
- *     white border the family ships with (e.g. tag36h11's outer ring) is
- *     part of the tag, not a quiet zone to strip.
+ * Adding a new family is one entry in this file plus dropping its mosaic
+ * (for `MosaicFamily`) or implementing a new `Family` subclass (for
+ * procedural / vector / raster backings) and listing the instance here.
  *
- * Adding a new family is one entry in `FAMILIES` plus dropping its mosaic
- * into `public/resources/`. No other code needs to change.
+ * Display order is the iteration order of `FAMILIES`. The UI groups
+ * consecutive entries by `group`; keep families intended for the same
+ * `<optgroup>` adjacent below.
  */
+export {
+  BitGridMarker,
+  type Family,
+  type FamilyGeometry,
+  type Marker,
+  type MarkerFrame,
+  type MarkerProvider,
+} from "./family";
 
-/**
- * A source of tag bit grids. `render/pdf` consumes one to draw each tag as
- * vector rectangles; `preview/tag-images` consumes one to rasterise each tag
- * to a small PNG for the live preview. Neither cares whether the grid came
- * from a static fixture, the live `families/load` loader, or a unit-test
- * mock. `null` means "not available right now" (mosaic still loading, unknown
- * family, id out of range); consumers should fall back to a placeholder
- * rather than failing.
- */
-export interface BitsProvider {
-  bits(family: string, id: number): boolean[][] | null;
-}
+import type { Family } from "./family";
+import { MosaicFamily } from "./mosaic-family";
 
-export interface TagFamilyDef {
-  name: string;
-  mosaicPath: string;
-  /** Side length of one tile in mosaic pixels, equal to the tag bitmap's
-   *  side length in modules (one pixel per module). */
-  tileSize_px: number;
-  /** AprilTag-spec "tag size" in modules — the distance between detection
-   *  corners, i.e. the length of the edge between the white border and the
-   *  black border. For families whose tile already contains a white outer
-   *  ring (tag36h11) this is `tileSize_px − 2`; for "Standard" / "Custom"
-   *  families whose outer modules carry data, it is smaller still. The UI's
-   *  Tag size input is interpreted in these units, then scaled to compute
-   *  the printed tile dimension. */
-  widthAtBorder_modules: number;
-  /** Number of valid tag IDs in the family. The mosaic may contain extra
-   *  blank tiles to round out a rectangular grid; ids ≥ this number do not
-   *  correspond to real tags. */
-  validTagCount: number;
-  /** UI grouping label. Families with the same `group` appear under one
-   *  `<optgroup>` in the family picker. Layout/render code ignores this. */
-  group?: string;
-  /** Shape of the printed cut around each tag — and, transitively, of the
-   *  quiet zone. Square families get a rectangular cut grid; Circle
-   *  families get one circular cut per tag. Set explicitly per family so
-   *  that adding a new family forces a deliberate choice. */
-  shape: "square" | "circle";
-  /** Required when `shape === "circle"`. Radius, in module units, of the
-   *  smallest circle centered on the tile center that encloses every
-   *  printed (black) pixel across any valid tag in the family. Used to
-   *  size the cut circle in millimetres as
-   *  `outerRadius_modules · (tile_mm / tileSize_px) + quietZone_mm`.
-   *  Absent for square families. */
-  outerRadius_modules?: number;
-  /** For recursive families: the always-black center block that can host
-   *  a sub-tag. `row`/`col` are 0-indexed from the tile's top-left;
-   *  `size` is the block's side length in modules. Absent for
-   *  non-recursive families. */
-  centerBlock?: { row: number; col: number; size: number };
-}
-
-// Display order is the iteration order of this object. The UI groups
-// consecutive entries by `group`, so keep families intended for the same
-// `<optgroup>` adjacent here.
-const FAMILIES: Record<string, TagFamilyDef> = {
-  tag36h11: {
+const FAMILIES: Family[] = [
+  new MosaicFamily({
     name: "tag36h11",
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tag36h11_mosaic.png`,
-    tileSize_px: 10,
-    widthAtBorder_modules: 8,
-    validTagCount: 587,
     group: "Classic",
-    shape: "square",
-  },
-  tagStandard41h12: {
+    count: 587,
+    geometry: { edge: 10, widthAtBorder: 8, outerShape: "square" },
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tag36h11_mosaic.png`,
+  }),
+  new MosaicFamily({
     name: "tagStandard41h12",
+    group: "Standard",
+    count: 2115,
+    geometry: { edge: 9, widthAtBorder: 5, outerShape: "square" },
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard41h12_mosaic.png`,
-    tileSize_px: 9,
-    widthAtBorder_modules: 5,
-    validTagCount: 2115,
-    group: "Standard",
-    shape: "square",
-  },
-  tagStandard52h13: {
+  }),
+  new MosaicFamily({
     name: "tagStandard52h13",
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard52h13_mosaic.png`,
-    tileSize_px: 10,
-    widthAtBorder_modules: 6,
-    validTagCount: 48714,
     group: "Standard",
-    shape: "square",
-  },
-  tagCustom48h12: {
+    count: 48714,
+    geometry: { edge: 10, widthAtBorder: 6, outerShape: "square" },
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tagStandard52h13_mosaic.png`,
+  }),
+  new MosaicFamily({
     name: "tagCustom48h12",
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCustom48h12_mosaic.png`,
-    tileSize_px: 10,
-    widthAtBorder_modules: 6,
-    validTagCount: 42211,
     group: "Custom",
-    shape: "square",
-    centerBlock: { row: 4, col: 4, size: 2 },
-  },
-  tagCircle21h7: {
+    count: 42211,
+    geometry: {
+      edge: 10,
+      widthAtBorder: 6,
+      outerShape: "square",
+      centerBlock: { row: 4, col: 4, size: 2 },
+    },
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCustom48h12_mosaic.png`,
+  }),
+  new MosaicFamily({
     name: "tagCircle21h7",
+    group: "Circle",
+    count: 38,
+    geometry: {
+      edge: 9,
+      widthAtBorder: 5,
+      outerShape: "circle",
+      // Smallest circle centred on the tile that encloses every occupied
+      // cell of any tag in the family. See scripts/measure-circle-geometry.py.
+      outerRadiusCells: 4.949747468305833,
+    },
     mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle21h7_mosaic.png`,
-    tileSize_px: 9,
-    widthAtBorder_modules: 5,
-    // Smallest circle centered on the tile that encloses every *occupied*
-    // cell (7×7 inner block corners). Corner cells of the 9×9 tile are
-    // outside the circular tag shape.
-    outerRadius_modules: 4.949747468305833,
-    validTagCount: 38,
-    group: "Circle",
-    shape: "circle",
-  },
-  tagCircle49h12: {
+  }),
+  new MosaicFamily({
     name: "tagCircle49h12",
-    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle49h12_mosaic.png`,
-    tileSize_px: 11,
-    widthAtBorder_modules: 5,
-    outerRadius_modules: 5.70087712549569,
-    validTagCount: 65535,
     group: "Circle",
-    shape: "circle",
-  },
-};
+    count: 65535,
+    geometry: {
+      edge: 11,
+      widthAtBorder: 5,
+      outerShape: "circle",
+      outerRadiusCells: 5.70087712549569,
+    },
+    mosaicPath: `${import.meta.env.BASE_URL}resources/tagCircle49h12_mosaic.png`,
+  }),
+];
 
-export function getFamily(name: string): TagFamilyDef | undefined {
-  return FAMILIES[name];
+const FAMILIES_BY_NAME = new Map(FAMILIES.map((f) => [f.name, f]));
+
+export function getFamily(name: string): Family | undefined {
+  return FAMILIES_BY_NAME.get(name);
 }
 
+/** All families in display order. */
+export function listFamilies(): Family[] {
+  return FAMILIES.slice();
+}
+
+/** All family names in display order. */
 export function listFamilyNames(): string[] {
-  return Object.keys(FAMILIES);
+  return FAMILIES.map((f) => f.name);
 }
 
-export function isRecursiveFamily(family: TagFamilyDef): boolean {
-  return family.centerBlock !== undefined;
-}
-
-export function listSquareFamilyNames(): string[] {
-  return Object.keys(FAMILIES).filter((n) => FAMILIES[n]!.shape === "square");
-}
-
-/** Number of tile columns and rows in a mosaic of the given pixel size,
- *  given the family's tile geometry. */
-export function mosaicGrid(
-  family: TagFamilyDef,
-  mosaicWidth_px: number,
-  mosaicHeight_px: number,
-): { cols: number; rows: number } {
-  const stride = family.tileSize_px + 1;
-  // (n*tile + (n-1)*1) = mosaic ⇒ n = (mosaic+1)/(tile+1)
-  return {
-    cols: Math.floor((mosaicWidth_px + 1) / stride),
-    rows: Math.floor((mosaicHeight_px + 1) / stride),
-  };
-}
-
-/**
- * Extract the bit grid for tag `id` from raw mosaic pixel data. `pixels` is
- * grayscale (one byte per pixel) in row-major order, top-left first. Returns
- * a `[edge][edge]` boolean grid where `true` is a black bit and `bits[0]` is
- * the topmost row of the tag bitmap.
- *
- * Pure function; suitable for unit tests with synthesized pixel buffers.
- */
-/**
- * Radius (in module units) of the smallest circle centered on the tile
- * center that encloses every black pixel in `bits`. The radius is measured
- * to the *outer* corner of each black pixel, not its center, so the
- * returned circle reaches the visible edge of the printed module. Returns
- * 0 for an all-white tile.
- *
- * Pure function over a bit grid; the measurement script in
- * `scripts/measure-circle-geometry.py` uses the same definition tag-by-tag
- * and reports the max across a family.
- */
-export function outerRadiusModulesFor(bits: ReadonlyArray<ReadonlyArray<boolean>>): number {
-  const edge = bits.length;
-  if (edge === 0) return 0;
-  const center = (edge - 1) / 2;
-  let best = 0;
-  for (let row = 0; row < edge; row++) {
-    const r = bits[row]!;
-    for (let col = 0; col < r.length; col++) {
-      if (!r[col]) continue;
-      const dx = Math.abs(col - center) + 0.5;
-      const dy = Math.abs(row - center) + 0.5;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > best) best = dist;
-    }
-  }
-  return best;
-}
-
-/**
- * Occupied-cell mask for a circle family: a cell is inside the tag if the
- * outer corner of the cell lies within `outerRadius_modules` of the tile
- * center. This naturally produces the correct shape for any radius — no
- * per-family branching, no hardcoded arm widths. For square families the
- * mask is simply all-true.
- */
-export function circleOccupiedMask(edge: number, outerRadius_modules: number): boolean[][] {
-  const center = (edge - 1) / 2;
-  const mask: boolean[][] = [];
-  for (let r = 0; r < edge; r++) {
-    const row: boolean[] = [];
-    for (let c = 0; c < edge; c++) {
-      const dx = Math.abs(c - center) + 0.5;
-      const dy = Math.abs(r - center) + 0.5;
-      row.push(Math.sqrt(dx * dx + dy * dy) <= outerRadius_modules + 1e-9);
-    }
-    mask.push(row);
-  }
-  return mask;
-}
-
-/**
- * For circle families, zero out cells outside the circular tag shape.
- * For square families, return the grid unchanged.
- */
-export function applyOccupiedMask(
-  bits: ReadonlyArray<ReadonlyArray<boolean>>,
-  family: TagFamilyDef,
-): boolean[][] {
-  if (family.shape !== "circle") return bits.map((row) => [...row]);
-  const mask = circleOccupiedMask(family.tileSize_px, family.outerRadius_modules!);
-  return bits.map((row, r) => row.map((val, c) => val && (mask[r]?.[c] ?? false)));
-}
-
-export function extractTagBits(
-  pixels: Uint8Array | Uint8ClampedArray,
-  mosaicWidth_px: number,
-  mosaicHeight_px: number,
-  family: TagFamilyDef,
-  id: number,
-): boolean[][] {
-  if (pixels.length < mosaicWidth_px * mosaicHeight_px) {
-    throw new Error(
-      `pixels buffer too small: have ${pixels.length}, need ${
-        mosaicWidth_px * mosaicHeight_px
-      }`,
-    );
-  }
-  const { cols, rows } = mosaicGrid(family, mosaicWidth_px, mosaicHeight_px);
-  if (id < 0 || id >= cols * rows) {
-    throw new Error(
-      `tag id ${id} out of range for ${family.name} mosaic (have ${cols * rows} tiles)`,
-    );
-  }
-  const stride = family.tileSize_px + 1;
-  const col = id % cols;
-  const row = Math.floor(id / cols);
-  const x0 = col * stride;
-  const y0 = row * stride;
-  const edge = family.tileSize_px;
-
-  const out: boolean[][] = [];
-  for (let dy = 0; dy < edge; dy++) {
-    const r: boolean[] = [];
-    for (let dx = 0; dx < edge; dx++) {
-      const idx = (y0 + dy) * mosaicWidth_px + (x0 + dx);
-      // Threshold at midpoint; mosaic pixels are pure 0 or 255 in practice.
-      r.push(pixels[idx]! < 128);
-    }
-    out.push(r);
+/** Families grouped by `group`. Iteration order matches display order;
+ *  the ungrouped bucket (key `""`) sorts wherever its first member
+ *  falls. */
+export function listFamiliesByGroup(): Map<string, Family[]> {
+  const out = new Map<string, Family[]>();
+  for (const f of FAMILIES) {
+    const key = f.group ?? "";
+    const bucket = out.get(key);
+    if (bucket) bucket.push(f);
+    else out.set(key, [f]);
   }
   return out;
+}
+
+/** True iff the family supports embedded sub-markers (has a center block). */
+export function isRecursiveFamily(family: Family): boolean {
+  return family.geometry.centerBlock !== undefined;
+}
+
+/** Family names whose cut shape is a square — used by the UI to populate
+ *  the sub-tag family picker, which today only supports square families. */
+export function listSquareFamilyNames(): string[] {
+  return FAMILIES.filter((f) => f.geometry.outerShape === "square").map((f) => f.name);
 }

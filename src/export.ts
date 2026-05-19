@@ -19,7 +19,7 @@
  * back-label files are a follow-up if anyone asks.
  */
 import { zipSync, strToU8, type Zippable } from "fflate";
-import type { BitsProvider } from "./families";
+import type { MarkerProvider } from "./families";
 import type { LayoutPlan, Placement } from "./layout/types";
 import { composePage } from "./render/compose";
 import { composePerTag, perTagCanvasSize_mm } from "./render/compose-per-tag";
@@ -40,7 +40,7 @@ export interface ExportOptions {
 
 export interface ExportRequest {
   plan: LayoutPlan;
-  markers: BitsProvider;
+  markers: MarkerProvider;
   format: ExportFormat;
   mode: ExportMode;
   options?: ExportOptions;
@@ -198,7 +198,7 @@ async function runPngPerTag(
 function renderSvgFrontPage(
   plan: LayoutPlan,
   pageIndex: number,
-  markers: BitsProvider,
+  markers: MarkerProvider,
   opts: ExportOptions,
   rasterizer: ReturnType<typeof createDomRasterizer>,
 ): string {
@@ -221,7 +221,7 @@ function renderSvgBackPage(plan: LayoutPlan, pageIndex: number): string {
 async function renderPngFrontPage(
   plan: LayoutPlan,
   pageIndex: number,
-  markers: BitsProvider,
+  markers: MarkerProvider,
   opts: ExportOptions,
   dpi: number,
 ): Promise<Uint8Array> {
@@ -247,7 +247,7 @@ async function renderPngBackPage(
 function renderPerTagSvg(
   placement: Placement,
   plan: LayoutPlan,
-  markers: BitsProvider,
+  markers: MarkerProvider,
   opts: ExportOptions,
   rasterizer: ReturnType<typeof createDomRasterizer>,
 ): string {
@@ -268,7 +268,7 @@ function renderPerTagSvg(
 async function renderPerTagPng(
   placement: Placement,
   plan: LayoutPlan,
-  markers: BitsProvider,
+  markers: MarkerProvider,
   opts: ExportOptions,
   dpi: number,
 ): Promise<Uint8Array> {

@@ -1,6 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import type { BitsProvider } from "../families";
+import { BitGridMarker, type MarkerProvider } from "../families";
 import { planSmallTagLayout } from "../layout/plan";
 import type { LayoutOptions, Paper, TagSpec } from "../layout/types";
 import type { CutShape } from "../layout/plan";
@@ -13,19 +13,21 @@ const minimalOpts: LayoutOptions = {
   cutMargin_mm: 1,
 };
 
-const fakeBits: BitsProvider = {
-  bits(_family, _id) {
-    return [
-      [true, false, true, false],
-      [false, true, false, true],
-      [true, false, true, false],
-      [false, true, false, true],
-    ];
+const defaultBits: readonly (readonly boolean[])[] = [
+  [true, false, true, false],
+  [false, true, false, true],
+  [true, false, true, false],
+  [false, true, false, true],
+];
+
+const fakeMarker: MarkerProvider = {
+  getMarker(_family, _id) {
+    return new BitGridMarker(defaultBits, "stub#0");
   },
 };
 
-const noBits: BitsProvider = {
-  bits(_family, _id) {
+const noMarker: MarkerProvider = {
+  getMarker(_family, _id) {
     return null;
   },
 };
@@ -37,7 +39,7 @@ function makeTags(count: number): TagSpec[] {
 describe("renderPlan", () => {
   it("emits a valid PDF byte stream that pdf-lib can parse back", async () => {
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts);
-    const bytes = await renderPlan(plan, fakeBits);
+    const bytes = await renderPlan(plan, fakeMarker);
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(bytes.length).toBeGreaterThan(100);
     const reloaded = await PDFDocument.load(bytes);
@@ -47,7 +49,7 @@ describe("renderPlan", () => {
   it("matches each layout page's paper size in points", async () => {
     const A4: Paper = { width_mm: 210, height_mm: 297 };
     const plan = planSmallTagLayout(makeTags(2), 20, A4, minimalOpts);
-    const bytes = await renderPlan(plan, fakeBits);
+    const bytes = await renderPlan(plan, fakeMarker);
     const reloaded = await PDFDocument.load(bytes);
     const calibration = reloaded.getPage(0);
     expect(calibration.getWidth()).toBeCloseTo((210 * 72) / 25.4, 3);
@@ -59,14 +61,14 @@ describe("renderPlan", () => {
 
   it("emits a PDF even when bits are unavailable (placeholder rendering)", async () => {
     const plan = planSmallTagLayout(makeTags(3), 25, square100, minimalOpts);
-    const bytes = await renderPlan(plan, noBits);
+    const bytes = await renderPlan(plan, noMarker);
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(plan.pageCount + 1);
   });
 
   it("produces a calibration-only PDF for an empty plan", async () => {
     const plan = planSmallTagLayout([], 20, square100, minimalOpts);
-    const bytes = await renderPlan(plan, fakeBits);
+    const bytes = await renderPlan(plan, fakeMarker);
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(1);
   });
@@ -78,7 +80,7 @@ describe("renderPlan", () => {
     // layout pages.
     const plan = planSmallTagLayout(makeTags(30), 25, square100, minimalOpts);
     expect(plan.pageCount).toBeGreaterThanOrEqual(2);
-    const bytes = await renderPlan(plan, fakeBits, { printLabelsOnBack: true });
+    const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
     const reloaded = await PDFDocument.load(bytes);
     // 1 calibration + 2 × layout pages.
     expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
@@ -86,14 +88,14 @@ describe("renderPlan", () => {
 
   it("does not insert back pages by default", async () => {
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts);
-    const bytes = await renderPlan(plan, fakeBits);
+    const bytes = await renderPlan(plan, fakeMarker);
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(1 + plan.pageCount);
   });
 
   it("renders a valid PDF with in-quiet-zone labels and no extra pages", async () => {
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts);
-    const bytes = await renderPlan(plan, fakeBits, { printLabelsInQuietZone: true });
+    const bytes = await renderPlan(plan, fakeMarker, { printLabelsInQuietZone: true });
     const reloaded = await PDFDocument.load(bytes);
     // The captions go inside the existing layout pages — no page added.
     expect(reloaded.getPageCount()).toBe(1 + plan.pageCount);
@@ -103,7 +105,7 @@ describe("renderPlan", () => {
   it("renders a circle plan as a valid PDF with correct page count", async () => {
     const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts, 20, circleShape);
-    const bytes = await renderPlan(plan, fakeBits);
+    const bytes = await renderPlan(plan, fakeMarker);
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(plan.pageCount + 1);
   });
@@ -111,7 +113,7 @@ describe("renderPlan", () => {
   it("renders a circle plan with back pages", async () => {
     const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts, 20, circleShape);
-    const bytes = await renderPlan(plan, fakeBits, { printLabelsOnBack: true });
+    const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
   });
@@ -119,7 +121,7 @@ describe("renderPlan", () => {
   it("renders a circle plan with in-quiet-zone labels (curved text)", async () => {
     const circleShape: CutShape = { kind: "circle", outerRadius_mm: 10 };
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts, 20, circleShape);
-    const bytes = await renderPlan(plan, fakeBits, { printLabelsInQuietZone: true });
+    const bytes = await renderPlan(plan, fakeMarker, { printLabelsInQuietZone: true });
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(plan.pageCount + 1);
   });
@@ -131,7 +133,7 @@ describe("renderPlan", () => {
       id,
     }));
     const plan = planSmallTagLayout(tags, 25, square100, minimalOpts);
-    const bytes = await renderPlan(plan, fakeBits, { printLabelsOnBack: true });
+    const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
     const reloaded = await PDFDocument.load(bytes);
     // 1 calibration + N layout fronts + N layout backs.
     expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
@@ -147,7 +149,7 @@ describe("renderPlan", () => {
     }));
     const plan = planSmallTagLayout(tags, 20, square100, minimalOpts);
     plan.subtagLevels = [{ familyName: "tag36h11", tileSize_mm: 4, tagSize_mm: 3.2 }];
-    const bytes = await renderPlan(plan, fakeBits, { printLabelsOnBack: true });
+    const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
   });
@@ -163,7 +165,7 @@ describe("renderPlan", () => {
       },
     }));
     const plan = planSmallTagLayout(tags, 20, square100, minimalOpts);
-    const bytes = await renderPlan(plan, fakeBits);
+    const bytes = await renderPlan(plan, fakeMarker);
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(plan.pageCount + 1);
   });

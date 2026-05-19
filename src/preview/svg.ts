@@ -11,7 +11,7 @@
  * (the eventual "Download as SVG" feature) constructs its own
  * `SvgCanvas` without these styles.
  */
-import type { BitsProvider } from "../families";
+import type { MarkerProvider } from "../families";
 import type { LayoutPlan } from "../layout/types";
 import type { ComposeOptions } from "../render/compose";
 import { composePage } from "../render/compose";
@@ -32,15 +32,15 @@ export interface PreviewOptions extends ComposeOptions {
 export function renderPlanToSvg(
   plan: LayoutPlan,
   page: number,
-  markers?: BitsProvider,
+  markers?: MarkerProvider,
   opts: PreviewOptions = {},
 ): string {
   const canvas = new SvgCanvas(plan.paper.width_mm, plan.paper.height_mm, {
     rasterizer: opts.rasterizer,
     rootStyle: PREVIEW_ROOT_STYLE,
   });
-  const bits: BitsProvider = markers ?? { bits: (): null => null };
-  composePage(plan, page, canvas, bits, {
+  const provider: MarkerProvider = markers ?? { getMarker: (): null => null };
+  composePage(plan, page, canvas, provider, {
     printLabelsInQuietZone: opts.printLabelsInQuietZone,
   });
   return canvas.toString();

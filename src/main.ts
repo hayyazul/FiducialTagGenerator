@@ -1,10 +1,10 @@
 import {
-  type BitsProvider,
+  type Family,
   getFamily,
   isRecursiveFamily,
   listFamilyNames,
   listSquareFamilyNames,
-  type TagFamilyDef,
+  type MarkerProvider,
 } from "./families";
 
 /** Build the `<select>` markup for the family picker, grouping consecutive
@@ -13,7 +13,7 @@ import {
 function buildFamilyOptionsMarkup(): string {
   const items = listFamilyNames()
     .map((n) => getFamily(n))
-    .filter((f): f is TagFamilyDef => f !== undefined);
+    .filter((f): f is Family => f !== undefined);
   let out = "";
   let currentGroup: string | undefined;
   let groupOpen = false;
@@ -37,7 +37,7 @@ function buildSquareFamilyOptionsMarkup(): string {
   const names = listSquareFamilyNames();
   const items = names
     .map((n) => getFamily(n))
-    .filter((f): f is TagFamilyDef => f !== undefined);
+    .filter((f): f is Family => f !== undefined);
   let out = "";
   let currentGroup: string | undefined;
   let groupOpen = false;
@@ -60,7 +60,6 @@ function buildSquareFamilyOptionsMarkup(): string {
 
 const MAX_SUBTAG_DEPTH = 2;
 
-import { type FamilyBitmaps, loadFamily } from "./families/load";
 import { formatIdSpec, parseTagIdSpec } from "./ids";
 import { planSmallTagLayout, type CutShape } from "./layout/plan";
 import type { LayoutOptions, LayoutPlan, Paper, SubtagLevel, TagSpec } from "./layout/types";
@@ -104,11 +103,18 @@ interface FormState {
 const CUSTOM_PAPER_MIN_MM = 50;
 const CUSTOM_PAPER_MAX_MM = 1200;
 
-const loadedFamilies = new Map<string, FamilyBitmaps>();
+// Tracks which families have finished `load()`. `Family` instances live in
+// the registry; this set is just a readiness gate. The MarkerProvider
+// below reads it on every lookup so an in-flight load surfaces as a
+// placeholder rather than a thrown error.
+const loadedFamilies = new Set<string>();
 
-const bitsProvider: BitsProvider = {
-  bits(family, id) {
-    return loadedFamilies.get(family)?.bits(id) ?? null;
+const markerProvider: MarkerProvider = {
+  getMarker(name, id) {
+    if (!loadedFamilies.has(name)) return null;
+    const f = getFamily(name);
+    if (!f) return null;
+    return f.getMarker(id);
   },
 };
 
@@ -136,8 +142,8 @@ function field(id: string): HTMLInputElement | HTMLSelectElement {
  *  families have outer data; tag36h11 has a white outer ring). Tag size
  *  spans `widthAtBorder_modules` modules across; the full tile spans
  *  `tileSize_px` modules. */
-function tileSize_mmFromTagSize(tagSize_mm: number, family: TagFamilyDef): number {
-  return tagSize_mm * (family.tileSize_px / family.widthAtBorder_modules);
+function tileSize_mmFromTagSize(tagSize_mm: number, family: Family): number {
+  return tagSize_mm * (family.geometry.edge / family.geometry.widthAtBorder);
 }
 
 /** Largest tag size (canonical edge) that still fits on `paper` after the
@@ -179,8 +185,8 @@ function maxFittingTagSize_mm(
  *  tile already includes whatever white border the family ships with (e.g.
  *  tag36h11's outer ring), so this is just a small cutting buffer.
  *  module_mm = tag size / widthAtBorder_modules. */
-function deriveQuietZone_mm(tagSize_mm: number, family: TagFamilyDef): number {
-  const wab = family.widthAtBorder_modules;
+function deriveQuietZone_mm(tagSize_mm: number, family: Family): number {
+  const wab = family.geometry.widthAtBorder;
   if (!Number.isFinite(tagSize_mm) || tagSize_mm <= 0 || wab <= 0) return 0;
   return 0.5 * (tagSize_mm / wab);
 }
@@ -206,15 +212,17 @@ function readForm(): FormState {
  *  the full mosaic tile, which is wider than the spec tag size by
  *  `tileSize_px / widthAtBorder_modules`. Returns null when inputs aren't
  *  usable. */
-function totalSizeFromTag(s: FormState, familyDef: TagFamilyDef | undefined): number | null {
+function totalSizeFromTag(s: FormState, familyDef: Family | undefined): number | null {
   if (!familyDef || !Number.isFinite(s.tagSize_mm) || s.tagSize_mm <= 0) return null;
   const qz = s.overrideAdvanced
     ? Number.isFinite(s.quietZone_mm) && s.quietZone_mm >= 0
       ? s.quietZone_mm
       : 0
     : deriveQuietZone_mm(s.tagSize_mm, familyDef);
-  if (familyDef.shape === "circle") {
-    const outerRadius_mm = familyDef.outerRadius_modules! * s.tagSize_mm / familyDef.widthAtBorder_modules;
+  if (familyDef.geometry.outerShape === "circle") {
+    const outerRadius_mm =
+      (familyDef.geometry.outerRadiusCells! * s.tagSize_mm) /
+      familyDef.geometry.widthAtBorder;
     return 2 * (outerRadius_mm + qz);
   }
   const tile_mm = tileSize_mmFromTagSize(s.tagSize_mm, familyDef);
@@ -227,7 +235,7 @@ function totalSizeFromTag(s: FormState, familyDef: TagFamilyDef | undefined): nu
  *   - total size: editable only with the override off (typing into it rescales
  *     the tag size — see `handleTotalSizeInput`); otherwise a read-only mirror
  *     of tag size + quiet zone. Never overwritten while it has focus. */
-function syncDependentFields(s: FormState, familyDef: TagFamilyDef | undefined): void {
+function syncDependentFields(s: FormState, familyDef: Family | undefined): void {
   const qz = field("quietZone") as HTMLInputElement;
   const cm = field("cutMargin") as HTMLInputElement;
   const total = field("totalSize") as HTMLInputElement;
@@ -267,10 +275,10 @@ function handleTotalSizeInput(): void {
   const familyDef = getFamily(field("family").value);
   const totalVal = Number.parseFloat(total.value);
   if (!familyDef || !Number.isFinite(totalVal) || totalVal <= 0) return;
-  const wab = familyDef.widthAtBorder_modules;
+  const wab = familyDef.geometry.widthAtBorder;
   if (wab <= 0) return;
-  if (familyDef.shape === "circle") {
-    const R = familyDef.outerRadius_modules!;
+  if (familyDef.geometry.outerShape === "circle") {
+    const R = familyDef.geometry.outerRadiusCells!;
     const override = (field("overrideAdvanced") as HTMLInputElement).checked;
     let tagSize: number;
     if (override) {
@@ -284,7 +292,7 @@ function handleTotalSizeInput(): void {
     (field("tagSize") as HTMLInputElement).value = tagSize.toFixed(2);
     return;
   }
-  const tile = familyDef.tileSize_px;
+  const tile = familyDef.geometry.edge;
   if (tile <= 0) return;
   // Square: Total = tagSize·(tile/wab) + 2·(0.5·tagSize/wab) = tagSize·((tile+1)/wab)
   (field("tagSize") as HTMLInputElement).value = (
@@ -386,7 +394,7 @@ async function handleDownload(): Promise<void> {
     const { runExport } = await import("./export");
     const result = await runExport({
       plan: currentPlan,
-      markers: bitsProvider,
+      markers: markerProvider,
       format,
       mode,
       options: { printLabelsOnBack, printLabelsInQuietZone, pngDpi },
@@ -540,9 +548,9 @@ function recompute(): void {
 
   // Lazy-load the family the first time it's selected.
   if (s.family && familyDef && !loadedFamilies.has(s.family)) {
-    void loadFamily(s.family).then(
-      (bm) => {
-        loadedFamilies.set(s.family, bm);
+    void familyDef.load().then(
+      () => {
+        loadedFamilies.add(s.family);
         syncDownloadButton();
         recompute();
       },
@@ -615,10 +623,10 @@ function recompute(): void {
     }
   }
   const maxId = tagIds.reduce((m, x) => Math.max(m, x), 0);
-  if (maxId >= familyDef.validTagCount) {
+  if (maxId >= familyDef.count) {
     setFieldError(
       "ids",
-      `This family has ${familyDef.validTagCount} tags (IDs 0–${familyDef.validTagCount - 1}); ` +
+      `This family has ${familyDef.count} tags (IDs 0–${familyDef.count - 1}); ` +
         `ID ${maxId} doesn't exist.`,
     );
     bad = true;
@@ -652,11 +660,12 @@ function recompute(): void {
 
   const tileSize_mm = tileSize_mmFromTagSize(effective.tagSize_mm, familyDef);
   const cutShape: CutShape =
-    familyDef.shape === "circle"
+    familyDef.geometry.outerShape === "circle"
       ? {
           kind: "circle",
           outerRadius_mm:
-            (familyDef.outerRadius_modules! * tileSize_mm) / familyDef.tileSize_px,
+            (familyDef.geometry.outerRadiusCells! * tileSize_mm) /
+            familyDef.geometry.edge,
         }
       : { kind: "square" };
   // All families now support quiet-zone labels (square: linear, circle: curved).
@@ -717,7 +726,7 @@ function recompute(): void {
       return `<section><h3>Page ${p + 1} / ${plan.pageCount}</h3>${renderPlanToSvg(
         plan,
         p,
-        bitsProvider,
+        markerProvider,
         { ...previewOpts, rasterizer: previewRasterizer },
       )}</section>`;
     }).join("") || `<p style="color:#888">No pages — add some tags.</p>`;
@@ -774,7 +783,7 @@ function syncSubtagChain(): void {
           rootIds = [];
         }
         if (ancestorFamilies.has(subFamilyName)) {
-          const assigned = assignDissimilarIds(rootIds, subDef?.validTagCount ?? 0);
+          const assigned = assignDissimilarIds(rootIds, subDef?.count ?? 0);
           subIdsInput.value = formatIdSpec(assigned);
         } else {
           subIdsInput.value = rootSpec;
@@ -873,10 +882,10 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
     let subIds: number[];
     if (inheriting) {
       if (ancestorFamilies.has(subFamilyName)) {
-        subIds = assignDissimilarIds(curIds, subDef.validTagCount);
+        subIds = assignDissimilarIds(curIds, subDef.count);
         if (subIds.length < curIds.length) {
           setFieldError(`subIds-${depth}`,
-            `${subFamilyName} only has ${subDef.validTagCount} tags, but ${curIds.length - subIds.length} ` +
+            `${subFamilyName} only has ${subDef.count} tags, but ${curIds.length - subIds.length} ` +
             `of the parent's ${curIds.length} IDs cannot be assigned a unique sub-tag ID.`);
           return null;
         }
@@ -909,24 +918,24 @@ function readSubtagChain(parentIds: number[], parentTile_mm: number, parentFamil
     ancestorFamilies.add(subFamilyName);
 
     const maxSubId = subIds.reduce((m, x) => Math.max(m, x), 0);
-    if (maxSubId >= subDef.validTagCount) {
+    if (maxSubId >= subDef.count) {
       setFieldError(`subIds-${depth}`,
-        `${subFamilyName} has ${subDef.validTagCount} tags (IDs 0–${subDef.validTagCount - 1}); ID ${maxSubId} doesn't exist.`);
+        `${subFamilyName} has ${subDef.count} tags (IDs 0–${subDef.count - 1}); ID ${maxSubId} doesn't exist.`);
       return null;
     }
 
-    const cb = curDef.centerBlock!;
-    const module_mm = curTile_mm / curDef.tileSize_px;
-    const subTile_mm = cb.size * module_mm;
-    const subTagSize_mm = subTile_mm * (subDef.widthAtBorder_modules / subDef.tileSize_px);
+    const cb = curDef.geometry.centerBlock!;
+    const cell_mm = curTile_mm / curDef.geometry.edge;
+    const subTile_mm = cb.size * cell_mm;
+    const subTagSize_mm = subTile_mm * (subDef.geometry.widthAtBorder / subDef.geometry.edge);
 
     levels.push({ familyName: subFamilyName, tileSize_mm: subTile_mm, tagSize_mm: subTagSize_mm });
     idChains.push(subIds);
 
     if (!loadedFamilies.has(subFamilyName)) {
       allLoaded = false;
-      void loadFamily(subFamilyName).then(
-        (bm) => { loadedFamilies.set(subFamilyName, bm); syncDownloadButton(); recompute(); },
+      void subDef.load().then(
+        () => { loadedFamilies.add(subFamilyName); syncDownloadButton(); recompute(); },
         (err: unknown) => { console.error("failed to load sub-family", subFamilyName, err); },
       );
     }

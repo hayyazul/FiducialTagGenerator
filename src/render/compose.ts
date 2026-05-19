@@ -24,7 +24,7 @@
  * overlap. The PDF renderer is immune to this in vector mode (no
  * opaque white fill), but the same ordering is harmless for it.
  */
-import { type BitsProvider, getFamily } from "../families";
+import { BitGridMarker, type Family, getFamily, type MarkerProvider } from "../families";
 import type { LayoutPlan, SubtagLevel, TagSpec } from "../layout/types";
 import { formatTagSize, tagCaptionLine } from "../tag-caption";
 import type { Canvas, Color } from "./canvas";
@@ -57,7 +57,7 @@ export function composePage(
   plan: LayoutPlan,
   pageIndex: number,
   canvas: Canvas,
-  markers: BitsProvider,
+  markers: MarkerProvider,
   opts: ComposeOptions = {},
 ): void {
   drawPageBackground(canvas);
@@ -155,65 +155,40 @@ function drawRegistrationMarks(canvas: Canvas, plan: LayoutPlan): void {
  *  and unmasked versions don't collide. */
 function drawMarkerAt(
   canvas: Canvas,
-  markers: BitsProvider,
+  markers: MarkerProvider,
   tag: TagSpec,
   x_mm: number,
   y_mm: number,
-  tile_mm: number,
+  size_mm: number,
 ): void {
-  const def = getFamily(tag.family);
-  const bits = markers.bits(tag.family, tag.id);
+  const def: Family | undefined = getFamily(tag.family);
+  const marker = markers.getMarker(tag.family, tag.id);
 
-  if (bits === null || bits.length === 0) {
-    drawPlaceholder(canvas, x_mm, y_mm, tile_mm, tag.family, tag.id);
+  if (marker === null) {
+    drawPlaceholder(canvas, x_mm, y_mm, size_mm, tag.family, tag.id);
   } else {
-    const cb = tag.subtag ? def?.centerBlock : undefined;
-    const drawBits = cb ? maskCenterBlock(bits, cb) : bits;
-    canvas.drawBitGrid({
-      bits: drawBits,
-      x_mm,
-      y_mm,
-      cellSize_mm: tile_mm / bits.length,
-      cacheKey: cb
-        ? `${tag.family}#${tag.id}+sub`
-        : `${tag.family}#${tag.id}`,
-    });
+    // When a sub-marker will overlay the parent's centre block, mask
+    // those cells out first so vector backends (PDF) don't paint them
+    // beneath the sub-marker. Bit-grid markers carry a fast path; any
+    // future marker type without one would need an opaque overlay rect
+    // emitted here. Today every Marker is a BitGridMarker.
+    const cb = tag.subtag ? def?.geometry.centerBlock : undefined;
+    const drawMarker =
+      cb && marker instanceof BitGridMarker
+        ? marker.withMaskedCenterBlock(cb)
+        : marker;
+    drawMarker.draw(canvas, { x_mm, y_mm, size_mm });
   }
 
-  if (!tag.subtag || !def?.centerBlock) return;
-  const cb = def.centerBlock;
-  const module_mm = tile_mm / def.tileSize_px;
-  const subTile_mm = cb.size * module_mm;
+  if (!tag.subtag || !def?.geometry.centerBlock) return;
+  const cb = def.geometry.centerBlock;
+  const cell_mm = size_mm / def.geometry.edge;
+  const subSize_mm = cb.size * cell_mm;
   // centerBlock is given with row 0 at the *top* of the parent tile; in
   // canvas-space (y-up) we measure rows down from the top edge.
-  const subX = x_mm + cb.col * module_mm;
-  const subY = y_mm + tile_mm - (cb.row + cb.size) * module_mm;
-  drawMarkerAt(canvas, markers, tag.subtag, subX, subY, subTile_mm);
-}
-
-/** Return a copy of `bits` with every cell inside `cb` set to `false`.
- *  The original grid is untouched. Used to keep a parent marker from
- *  drawing into the region a sub-tag will immediately overlay. */
-function maskCenterBlock(
-  bits: readonly (readonly boolean[])[],
-  cb: { row: number; col: number; size: number },
-): boolean[][] {
-  const out: boolean[][] = [];
-  for (let r = 0; r < bits.length; r++) {
-    const row = bits[r]!;
-    if (r < cb.row || r >= cb.row + cb.size) {
-      out.push([...row]);
-      continue;
-    }
-    const next: boolean[] = [];
-    for (let c = 0; c < row.length; c++) {
-      next.push(
-        c >= cb.col && c < cb.col + cb.size ? false : row[c]!,
-      );
-    }
-    out.push(next);
-  }
-  return out;
+  const subX = x_mm + cb.col * cell_mm;
+  const subY = y_mm + size_mm - (cb.row + cb.size) * cell_mm;
+  drawMarkerAt(canvas, markers, tag.subtag, subX, subY, subSize_mm);
 }
 
 function drawPlaceholder(
