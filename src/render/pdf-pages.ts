@@ -22,14 +22,33 @@ import { BLACK, type Canvas, gray } from "./canvas";
 const CALIBRATION_SIZE_MM = 100;
 const CALIBRATION_HEADER_HEIGHT_MM = 36;
 
-const CUT_LINE = gray(0.55);
 const REG_MARK = gray(0.4);
-const BACK_BORDER = gray(0.75);
+const BOX_BORDER = gray(0.6);
 const FOOTER_TEXT = gray(0.35);
 
-const CUT_LINE_WIDTH = 0.25;
 const REG_MARK_WIDTH = 0.2;
-const BACK_BORDER_WIDTH = 0.2;
+const BOX_BORDER_WIDTH = 0.2;
+
+// Back-label text-box geometry.
+//   - GLYPH_ADVANCE_EM: mono (Courier) advance width per em. The PDF back
+//     labels are set in the mono font, whose glyphs are exactly 0.6 em
+//     wide, so a line of N glyphs at font size f is N · 0.6 · f wide.
+//   - LINE_SPACING: baseline-to-baseline spacing as a multiple of f.
+//   - BOX_PAD_EM: padding between the text block and the box edge, per
+//     side, as a multiple of f.
+const GLYPH_ADVANCE_EM = 0.6;
+const LINE_SPACING = 1.4;
+const BOX_PAD_EM = 0.4;
+// Fraction of the safe footprint the box is allowed to fill — leaves a
+// visible gap between the box and the (invisible) cut so the label never
+// looks crowded against the tag edge.
+const BOX_FILL_FRAC = 0.9;
+// Clearance (mm) reserved between the box and the cut to absorb duplex
+// front/back misregistration (~1–2 mm on consumer printers, and it
+// drifts sheet to sheet). Clamped to a fraction of the tag so an
+// absolute 2 mm doesn't swallow the whole label on tiny tags.
+const MISREG_CLEARANCE_MM = 2;
+const MISREG_CLEARANCE_FRAC = 0.15;
 
 /** A 100 × 100 mm reference square plus tick rulers along its left and
  *  bottom edges, with a small header explaining how to use it. */
@@ -139,10 +158,19 @@ function drawRuler(
   }
 }
 
-/** The mirrored back-label sheet for `pageIndex`. Cut lines, cut
- *  circles, and registration marks are drawn at their front positions
- *  reflected across the page's vertical axis; every placement on the
- *  front becomes a label block on the back at the mirrored position. */
+/** The back-label sheet for `pageIndex`, for long-edge duplex printing.
+ *
+ *  Each front placement becomes a small text box on the back, centred on
+ *  the placement's tag centre reflected across the page's vertical axis
+ *  (x → W − x) so it lands behind the tag after the sheet is flipped.
+ *
+ *  Deliberately draws **no** tag-boundary geometry — no cut lines, no
+ *  cut circles, no full-tile outline. Those edges sit on or near the
+ *  cut, so any duplex front/back misregistration leaves them partly cut
+ *  off and partly remaining, which looks broken. The cut is guided
+ *  entirely by the front sheet; the back only needs to carry the label,
+ *  boxed well inside the (now invisible) tag bounds. Registration marks
+ *  stay — they sit in the page corners, far from any cut. */
 export function drawBackPage(canvas: Canvas, plan: LayoutPlan, pageIndex: number): void {
   const W = plan.paper.width_mm;
   const isCircular = plan.cutCircles.length > 0;
@@ -156,38 +184,28 @@ export function drawBackPage(canvas: Canvas, plan: LayoutPlan, pageIndex: number
     fill: { r: 1, g: 1, b: 1 },
   });
 
-  for (const c of plan.cutSegments) {
-    if (c.page !== pageIndex) continue;
-    canvas.drawLine({
-      x0_mm: W - c.x0_mm,
-      y0_mm: c.y0_mm,
-      x1_mm: W - c.x1_mm,
-      y1_mm: c.y1_mm,
-      stroke: CUT_LINE,
-      strokeWidth_mm: CUT_LINE_WIDTH,
-    });
-  }
-  for (const c of plan.cutCircles) {
-    if (c.page !== pageIndex) continue;
-    canvas.drawCircle({
-      cx_mm: W - c.cx_mm,
-      cy_mm: c.cy_mm,
-      radius_mm: c.radius_mm,
-      stroke: CUT_LINE,
-      strokeWidth_mm: CUT_LINE_WIDTH,
-    });
-  }
-
   // Registration marks: their corner positions are symmetric in x so
   // the same set is correct on the back.
   drawBackRegistrationCorners(canvas, plan);
 
   const tile_mm = plan.tileSize_mm;
+  // Uniform plan: every tag shares one cut radius (circle families only).
+  const cutRadius_mm = plan.cutCircles[0]?.radius_mm ?? tile_mm / 2;
   for (const placement of plan.placements) {
     if (placement.page !== pageIndex) continue;
-    const x_back = W - placement.x_mm - tile_mm;
-    const y_back = placement.y_mm;
-    drawBackLabel(canvas, placement, x_back, y_back, tile_mm, plan.tagSize_mm, plan.subtagLevels, isCircular);
+    const cx_mm = W - placement.x_mm - tile_mm / 2;
+    const cy_mm = placement.y_mm + tile_mm / 2;
+    drawBackLabel(
+      canvas,
+      placement,
+      cx_mm,
+      cy_mm,
+      tile_mm,
+      cutRadius_mm,
+      isCircular,
+      plan.tagSize_mm,
+      plan.subtagLevels,
+    );
   }
 }
 
@@ -217,37 +235,63 @@ function drawBackRegistrationCorners(canvas: Canvas, plan: LayoutPlan): void {
 function drawBackLabel(
   canvas: Canvas,
   placement: Placement,
-  x_mm: number,
-  y_mm: number,
+  cx_mm: number,
+  cy_mm: number,
   tile_mm: number,
+  cutRadius_mm: number,
+  isCircular: boolean,
   tagSize_mm: number,
   subtagLevels: SubtagLevel[],
-  isCircular: boolean,
 ): void {
-  // Faint outline so the user can see the bounds of each tag on the
-  // back (there's no bitmap to give it shape). Circular tags get a
-  // matching circle.
-  if (isCircular) {
-    const radius = tile_mm / 2;
-    canvas.drawCircle({
-      cx_mm: x_mm + radius,
-      cy_mm: y_mm + radius,
-      radius_mm: radius,
-      stroke: BACK_BORDER,
-      strokeWidth_mm: BACK_BORDER_WIDTH,
-    });
-  } else {
-    canvas.drawRect({
-      x_mm,
-      y_mm,
-      width_mm: tile_mm,
-      height_mm: tile_mm,
-      stroke: BACK_BORDER,
-      strokeWidth_mm: BACK_BORDER_WIDTH,
+  const lines = backLabelLines(placement, tagSize_mm, subtagLevels);
+  const footprint = safeFootprint(tile_mm, cutRadius_mm, isCircular);
+
+  // Largest font that fits both the widest line and the full stack of
+  // lines (plus box padding) inside the safe footprint. No floor: on a
+  // tiny tag the text shrinks rather than overflowing the tag bounds.
+  const maxGlyphs = Math.max(1, ...lines.map((l) => l.text.length));
+  const boxWidthEm = GLYPH_ADVANCE_EM * maxGlyphs + 2 * BOX_PAD_EM;
+  const boxHeightEm = LINE_SPACING * lines.length + 2 * BOX_PAD_EM;
+  const fontSize_mm = Math.min(footprint.width / boxWidthEm, footprint.height / boxHeightEm);
+
+  const boxW = fontSize_mm * boxWidthEm;
+  const boxH = fontSize_mm * boxHeightEm;
+  canvas.drawRect({
+    x_mm: cx_mm - boxW / 2,
+    y_mm: cy_mm - boxH / 2,
+    width_mm: boxW,
+    height_mm: boxH,
+    stroke: BOX_BORDER,
+    strokeWidth_mm: BOX_BORDER_WIDTH,
+  });
+
+  const pad = BOX_PAD_EM * fontSize_mm;
+  const lineHeight = LINE_SPACING * fontSize_mm;
+  const interiorTop = cy_mm + boxH / 2 - pad;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i]!;
+    canvas.drawText({
+      text: ln.text,
+      x_mm: cx_mm,
+      y_mm: interiorTop - (i + 0.5) * lineHeight,
+      fontSize_mm,
+      font: "mono",
+      weight: ln.bold ? "bold" : "regular",
+      fill: BLACK,
+      anchor: "middle",
+      verticalAnchor: "middle",
     });
   }
+}
 
-  const lines: Array<{ text: string; bold: boolean }> = [
+/** The lines printed on the back of one tag: family, id, size, then one
+ *  line per nested sub-tag. */
+function backLabelLines(
+  placement: Placement,
+  tagSize_mm: number,
+  subtagLevels: SubtagLevel[],
+): Array<{ text: string; bold: boolean }> {
+  const lines = [
     { text: placement.tag.family, bold: false },
     { text: `#${placement.tag.id}`, bold: true },
     { text: formatTagSize(tagSize_mm), bold: false },
@@ -264,36 +308,30 @@ function drawBackLabel(
     sub = sub.subtag;
     levelIdx++;
   }
+  return lines;
+}
 
-  // Pick a font size that lets the whole block fit vertically and no
-  // line overflow horizontally. Floor at ~1.5 mm so it stays legible.
-  const maxGlyphs = Math.max(1, ...lines.map((l) => l.text.length));
-  let fontSize_mm = tile_mm * Math.min(
-    0.18,
-    0.85 / (1.4 * lines.length),
-    0.9 / (0.6 * maxGlyphs),
-  );
-  fontSize_mm = Math.max(fontSize_mm, 1.5);
-  const lineHeight = fontSize_mm * 1.4;
-  const blockHeight = lineHeight * lines.length;
-  const tagCenterY = y_mm + tile_mm / 2;
-  const tagCenterX = x_mm + tile_mm / 2;
-  // Baseline of the topmost line.
-  const topBaseline = tagCenterY + blockHeight / 2 - fontSize_mm;
-
-  for (let i = 0; i < lines.length; i++) {
-    const ln = lines[i]!;
-    canvas.drawText({
-      text: ln.text,
-      x_mm: tagCenterX,
-      y_mm: topBaseline - i * lineHeight,
-      fontSize_mm,
-      font: "mono",
-      weight: ln.bold ? "bold" : "regular",
-      fill: BLACK,
-      anchor: "middle",
-    });
+/** A rectangle, centred on the tag, guaranteed to stay clear of the cut
+ *  even under duplex misregistration — the box and text are sized to fit
+ *  inside it. For square cuts the footprint sits inside the printed tile
+ *  (already inset from the cut by the quiet zone); for circular cuts it
+ *  is the square inscribed in the cut disk. In both cases an extra
+ *  clearance absorbs front/back misregistration, and `BOX_FILL_FRAC`
+ *  keeps a visible margin. */
+function safeFootprint(
+  tile_mm: number,
+  cutRadius_mm: number,
+  isCircular: boolean,
+): { width: number; height: number } {
+  if (isCircular) {
+    const clearance = Math.min(MISREG_CLEARANCE_MM, 2 * cutRadius_mm * MISREG_CLEARANCE_FRAC);
+    const safeRadius = Math.max(0, cutRadius_mm - clearance);
+    const side = safeRadius * Math.SQRT2 * BOX_FILL_FRAC;
+    return { width: side, height: side };
   }
+  const clearance = Math.min(MISREG_CLEARANCE_MM, tile_mm * MISREG_CLEARANCE_FRAC);
+  const side = Math.max(0, tile_mm - 2 * clearance) * BOX_FILL_FRAC;
+  return { width: side, height: side };
 }
 
 /** Small grey footer on every page that carries page index, the
