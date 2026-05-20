@@ -12,7 +12,7 @@
  * Vite, so a build-time placeholder doesn't help them.
  */
 export const owner = "hayyazul";
-export const repo = "ArUcoCCTagAprilTagGenerator";
+export const repo = "FiducialTagGenerator";
 
 export const repoUrl = `https://github.com/${owner}/${repo}`;
 export const siteUrl = `https://${owner}.github.io/${repo}/`;
