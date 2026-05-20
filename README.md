@@ -1,6 +1,6 @@
-# Fiducial Marker Generator
+# Fiducial Tag Generator
 
-Free, open, browser-based fiducial marker generator. Pick a
+Free, open, browser-based generator for fiducial markers. Pick a
 family, choose a tag ID range and a physical size, and the tool packs as
 many tags as fit per page — quiet zones, cut margins, and printable
 boundaries computed correctly. Print-ready PDFs, PNGs, and SVGs are produced in the
