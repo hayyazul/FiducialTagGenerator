@@ -144,13 +144,14 @@ loop; the per-layout-page front/back loop is unchanged.
    and the "double-sided" flag are passed in (the function currently takes only
    a `Canvas`).
 
-2. **New `drawAlignmentBackPage(canvas, plan)`.** For each reference target,
-   draw a real back-label box via the existing `drawBackLabel` path (so the
-   test exercises the same `safeFootprint` + text sizing the real labels use),
-   with sample text, centered at the mirror (`x → W − x`) of the front target
-   center. Add mirrored registration corners (reuse
-   `drawBackRegistrationCorners`) and a one-line header explaining the
-   hold-to-light check.
+2. **New `drawAlignmentBackPage(canvas, { isCircular })`.** For each reference
+   target, draw a real back-label box via the existing `drawBackLabel` path (so
+   the test exercises the same `safeFootprint` + text sizing the real labels
+   use), with worst-case sample text, centered at the mirror (`x → W − x`) of
+   the front target center, plus a short header explaining the hold-to-light
+   check. No registration corner marks are added: the calibration front has
+   none to align against, so the target outlines plus the calibration square's
+   1 mm grid are the alignment reference.
 
 3. **Shared reference-target definition.** A single source of truth for the
    target sizes and their stacked centers, consumed by both the front (draws
