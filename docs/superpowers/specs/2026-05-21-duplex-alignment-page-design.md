@@ -53,12 +53,34 @@ absolute budget shrinks. This page lets them measure it.
 
 ### What it tests
 
-Reference "back-tags" (sample label boxes, identical to the real
-`drawBackPage` output) at **fixed sizes and fixed positions**, registered
-against the calibration square's existing 1 mm tick grid. The user holds the
-printed sheet to the light: each back-tag box should sit centered **inside**
-its target outline on the front. If a box spills past its outline, the
-printer's duplex offset exceeds the safe margin for that size.
+Reference "back-tags" (sample label boxes, drawn through the same
+`drawBackLabel` path as the real `drawBackPage` output) at **fixed sizes and
+fixed positions**, registered against the calibration square's existing 1 mm
+tick grid. The user holds the printed sheet to the light: each back-tag box
+should sit centered **inside** its target outline on the front. If a box spills
+past its outline, the printer's duplex offset exceeds the safe margin for that
+size.
+
+### Worst-case label text (family-agnostic)
+
+The box-in-target containment is guaranteed by `safeFootprint` regardless of
+the text — the box never exceeds the safe footprint, and the font shrinks to
+fit. What the text actually affects is **legibility**: more/longer lines force a
+smaller font, and on a 10 mm tag that font can become unreadable. So the test
+must render the *most demanding* label the renderer can emit, using neutral
+placeholder glyphs rather than any real family:
+
+- **Maximum line count** the back-label path can produce: the top family line,
+  `#id`, the size line, plus the deepest nested sub-tag chain the recursive UI
+  allows. The sample uses that full line count.
+- **Maximum line width**: each line is padded to the widest a real line of its
+  kind can be (longest family-name length, max id digits, max size string). The
+  mono font is fixed-width, so width is purely a glyph count; neutral filler
+  glyphs (e.g. `X`) at that count reproduce the worst-case width without naming
+  a family.
+
+If the user can read this sample at 10 mm after printing, every real label on a
+real job is at least as legible.
 
 Reference tags are **fixed sizes, not the job's actual tag size** — a real tag
 can occupy most of a page, which is useless as a compact registration target.
@@ -76,16 +98,32 @@ their job.
 
 ### Layout
 
+When double-sided, the calibration square is **centered vertically** on the
+page (the current header-offset shift is dropped) and moved left of center to
+open a column on its right for the three targets, **stacked vertically** (10 /
+25 / 50 mm) and centered as a group on the same vertical middle as the square.
+The header text stays at the top of the page as today. The single-sided
+calibration page is unchanged.
+
 ```
    FRONT (calibration sheet)        BACK (new alignment page)
   ┌─────────────────────────┐      ┌─────────────────────────┐
   │ Print calibration  …    │      │ Duplex alignment check … │
-  │   ┌──── 100 mm ─────┐   │ flip │    ┌──────────────┐      │
-  │   │  □10  □25   ◻50  │  │ ───► │    │ ◻50   □25  □10│     │  labels mirrored
-  │   │   (targets)      │  │      │    │  (back-tags)  │     │  across x → W−x
-  │   └──┬─ 1 mm ticks ──┘  │      │    └──────────────┘      │
+  │ ┌──── 100 mm ───┐  ┌──┐ │ flip │ ┌──┐  ┌──── 100 mm ───┐  │
+  │ │               │  │□ │10│ ───►│10│ □│  │               │  │
+  │ │   (square)    │  ├──┤ │      │ ├──┤  │   (mirror of   │  │
+  │ │               │  │□ │25│     │25│ □│  │    front)      │  │
+  │ │               │  ├──┤ │      │ ├──┤  │               │  │
+  │ └─ ticks ───────┘  │◻ │50│     │50│ ◻│  └───────────────┘  │
+  │                    └──┘ │      │ └──┘                      │
   └─────────────────────────┘      └─────────────────────────┘
+   targets right of square          back-tags mirrored to the
+   front center cx                  left, at x → W − cx
 ```
+
+A front target at center `(cx, cy)` (right of the square) maps to a back label
+at `(W − cx, cy)` (left of center on the back page); flipping the sheet about
+its long edge brings the two into coincidence.
 
 ## Components and changes
 
@@ -98,9 +136,11 @@ loop; the per-layout-page front/back loop is unchanged.
 ### `src/render/pdf-pages.ts`
 
 1. **`drawCalibrationPage` gains an optional set of front targets.** When
-   double-sided, draw the 3 reference target outlines (faint, captioned with
-   their size) at fixed centers inside the 100 mm square, in the job's cut
-   shape. When single-sided, the calibration page is unchanged. The cut shape
+   double-sided, center the square vertically (drop the header offset), shift it
+   left of center, and draw the 3 reference target outlines (faint, captioned
+   with their size) **stacked vertically in a column to the right of the
+   square**, in the job's cut shape, centered as a group on the same vertical
+   middle. When single-sided, the calibration page is unchanged. The cut shape
    and the "double-sided" flag are passed in (the function currently takes only
    a `Canvas`).
 
@@ -113,11 +153,11 @@ loop; the per-layout-page front/back loop is unchanged.
    hold-to-light check.
 
 3. **Shared reference-target definition.** A single source of truth for the
-   target sizes and their centers, consumed by both the front (draws outlines)
-   and the back (draws mirrored labels), so the two sides cannot drift out of
-   sync. Centers are chosen to fit the largest (50 mm) target inside the 100 mm
-   square without overlap and to keep all targets clear of the rulers and
-   header.
+   target sizes and their stacked centers, consumed by both the front (draws
+   outlines) and the back (draws mirrored labels), so the two sides cannot drift
+   out of sync. Centers are chosen so the column (10 + 25 + 50 mm tall plus
+   gaps) fits beside the square within the page width and stays clear of the
+   rulers and header.
 
 ### Coordinate contract
 
