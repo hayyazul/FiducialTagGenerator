@@ -195,17 +195,8 @@ export function drawBackPage(canvas: Canvas, plan: LayoutPlan, pageIndex: number
     if (placement.page !== pageIndex) continue;
     const cx_mm = W - placement.x_mm - tile_mm / 2;
     const cy_mm = placement.y_mm + tile_mm / 2;
-    drawBackLabel(
-      canvas,
-      placement,
-      cx_mm,
-      cy_mm,
-      tile_mm,
-      cutRadius_mm,
-      isCircular,
-      plan.tagSize_mm,
-      plan.subtagLevels,
-    );
+    const lines = backLabelLines(placement, plan.tagSize_mm, plan.subtagLevels);
+    drawBackLabel(canvas, lines, cx_mm, cy_mm, tile_mm, cutRadius_mm, isCircular);
   }
 }
 
@@ -234,16 +225,13 @@ function drawBackRegistrationCorners(canvas: Canvas, plan: LayoutPlan): void {
 
 function drawBackLabel(
   canvas: Canvas,
-  placement: Placement,
+  lines: Array<{ text: string; bold: boolean }>,
   cx_mm: number,
   cy_mm: number,
   tile_mm: number,
   cutRadius_mm: number,
   isCircular: boolean,
-  tagSize_mm: number,
-  subtagLevels: SubtagLevel[],
 ): void {
-  const lines = backLabelLines(placement, tagSize_mm, subtagLevels);
   const footprint = safeFootprint(tile_mm, cutRadius_mm, isCircular);
 
   // Largest font that fits both the widest line and the full stack of
