@@ -50,15 +50,68 @@ const BOX_FILL_FRAC = 0.9;
 const MISREG_CLEARANCE_MM = 2;
 const MISREG_CLEARANCE_FRAC = 0.15;
 
+// Duplex alignment check (double-sided only). The reference sizes span the
+// containment failure boundary: 10 mm is the worst case — the misreg
+// clearance caps at 15% of the tag (1.5 mm) below ~13 mm, tighter than the
+// 2 mm budget — while 25 / 50 mm sit comfortably inside it. `size_mm` is the
+// outer cut dimension (square edge, or circle diameter). Centres are on the
+// A4 calibration page (210×297): a column at x = 160, right of the
+// left-shifted square, the group centred on the page's vertical middle.
+interface AlignmentTarget {
+  size_mm: number;
+  cx_mm: number;
+  cy_mm: number;
+}
+const ALIGNMENT_TARGETS: readonly AlignmentTarget[] = [
+  { size_mm: 10, cx_mm: 160, cy_mm: 194 },
+  { size_mm: 25, cx_mm: 160, cy_mm: 168.5 },
+  { size_mm: 50, cx_mm: 160, cy_mm: 123 },
+];
+
+// In duplex mode the 100 mm square shifts left from page-centre to open the
+// target column on its right, and is centred vertically (the header offset
+// is dropped).
+const CALIBRATION_DUPLEX_X0_MM = 25;
+
+const TARGET_OUTLINE = gray(0.6);
+const TARGET_OUTLINE_WIDTH = 0.3;
+
+// The widest shipped family name (16 chars), used only as a width proxy so
+// the sample is family-agnostic yet an upper bound on real label width.
+const WORST_CASE_FAMILY = "tagStandard41h12";
+
+/** The most demanding label the back renderer can emit: max line count
+ *  (family, id, size, plus two nested sub-tag lines — the deepest the test
+ *  suite exercises) and max width per line. If this stays legible at 10 mm,
+ *  every real label does. Family-agnostic by construction. */
+function worstCaseBackLabel(size_mm: number): Array<{ text: string; bold: boolean }> {
+  const subLine = `> ${WORST_CASE_FAMILY} #99999 · ${formatTagSize(size_mm)}`;
+  return [
+    { text: WORST_CASE_FAMILY, bold: false },
+    { text: "#99999", bold: true },
+    { text: formatTagSize(size_mm), bold: false },
+    { text: subLine, bold: false },
+    { text: subLine, bold: false },
+  ];
+}
+
 /** A 100 × 100 mm reference square plus tick rulers along its left and
- *  bottom edges, with a small header explaining how to use it. */
-export function drawCalibrationPage(canvas: Canvas): void {
+ *  bottom edges, with a small header explaining how to use it. When
+ *  `duplex` is given (double-sided printing), the square is vertically
+ *  centred and shifted left, and reference target outlines are drawn in a
+ *  column to its right for the duplex alignment check on the back. */
+export function drawCalibrationPage(
+  canvas: Canvas,
+  duplex?: { isCircular: boolean },
+): void {
   const PAGE_W = canvas.page.width_mm;
   const PAGE_H = canvas.page.height_mm;
   const REF = CALIBRATION_SIZE_MM;
 
-  const x0 = (PAGE_W - REF) / 2;
-  const y0 = (PAGE_H - CALIBRATION_HEADER_HEIGHT_MM - REF) / 2;
+  const x0 = duplex ? CALIBRATION_DUPLEX_X0_MM : (PAGE_W - REF) / 2;
+  const y0 = duplex
+    ? (PAGE_H - REF) / 2
+    : (PAGE_H - CALIBRATION_HEADER_HEIGHT_MM - REF) / 2;
 
   canvas.drawRect({
     x_mm: x0,
@@ -95,6 +148,107 @@ export function drawCalibrationPage(canvas: Canvas): void {
       font: "mono",
       fill: gray(0.25),
     });
+  }
+
+  if (duplex) {
+    for (const t of ALIGNMENT_TARGETS) {
+      drawAlignmentTargetOutline(canvas, t, duplex.isCircular);
+    }
+  }
+}
+
+/** A faint outline marking where a reference tag of `t.size_mm` sits on the
+ *  calibration front, with its size captioned above it. Square cuts get a
+ *  square; circular cuts get a circle of diameter `size_mm`. */
+function drawAlignmentTargetOutline(
+  canvas: Canvas,
+  t: AlignmentTarget,
+  isCircular: boolean,
+): void {
+  if (isCircular) {
+    canvas.drawCircle({
+      cx_mm: t.cx_mm,
+      cy_mm: t.cy_mm,
+      radius_mm: t.size_mm / 2,
+      stroke: TARGET_OUTLINE,
+      strokeWidth_mm: TARGET_OUTLINE_WIDTH,
+    });
+  } else {
+    canvas.drawRect({
+      x_mm: t.cx_mm - t.size_mm / 2,
+      y_mm: t.cy_mm - t.size_mm / 2,
+      width_mm: t.size_mm,
+      height_mm: t.size_mm,
+      stroke: TARGET_OUTLINE,
+      strokeWidth_mm: TARGET_OUTLINE_WIDTH,
+    });
+  }
+  canvas.drawText({
+    text: `${t.size_mm} mm`,
+    x_mm: t.cx_mm,
+    y_mm: t.cy_mm + t.size_mm / 2 + 2,
+    fontSize_mm: ptToMm(8),
+    font: "mono",
+    fill: gray(0.4),
+    anchor: "middle",
+  });
+}
+
+/** The duplex alignment check, printed on the back of the calibration
+ *  sheet. For each reference target, a worst-case sample label is drawn at
+ *  the mirror (x → W − x) of the target's front centre, so a long-edge
+ *  duplex flip lands each box behind its target outline. Holding the sheet
+ *  to the light shows whether the user's printer keeps the back image
+ *  registered inside the tag at each size. No registration corner marks:
+ *  the calibration front has none, so the target outlines + the 1 mm grid
+ *  are the alignment reference. */
+export function drawAlignmentBackPage(
+  canvas: Canvas,
+  opts: { isCircular: boolean },
+): void {
+  const W = canvas.page.width_mm;
+  const H = canvas.page.height_mm;
+
+  // White background so the sample boxes / text read.
+  canvas.drawRect({ x_mm: 0, y_mm: 0, width_mm: W, height_mm: H, fill: { r: 1, g: 1, b: 1 } });
+
+  canvas.drawText({
+    text: "Duplex alignment check",
+    x_mm: 20,
+    y_mm: H - 14,
+    fontSize_mm: ptToMm(18),
+    font: "mono",
+    fill: BLACK,
+  });
+  const headerLines = [
+    "Hold this sheet to a light. Each box should sit centred INSIDE the matching",
+    "outline on the front (calibration) side. If a box pokes past its outline, your",
+    "printer's double-sided registration is off by more than the labels can absorb at",
+    "that size — print single-sided, or use larger tags.",
+  ];
+  const headerFont_mm = ptToMm(9);
+  for (let i = 0; i < headerLines.length; i++) {
+    canvas.drawText({
+      text: headerLines[i]!,
+      x_mm: 20,
+      y_mm: H - 22 - i * 4,
+      fontSize_mm: headerFont_mm,
+      font: "mono",
+      fill: gray(0.25),
+    });
+  }
+
+  for (const t of ALIGNMENT_TARGETS) {
+    const cutRadius_mm = t.size_mm / 2;
+    drawBackLabel(
+      canvas,
+      worstCaseBackLabel(t.size_mm),
+      W - t.cx_mm,
+      t.cy_mm,
+      t.size_mm,
+      cutRadius_mm,
+      opts.isCircular,
+    );
   }
 }
 

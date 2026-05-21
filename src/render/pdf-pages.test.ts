@@ -27,7 +27,7 @@ import { BitGridMarker, type MarkerProvider } from "../families";
 import { type CutShape, planSmallTagLayout } from "../layout/plan";
 import type { LayoutOptions, LayoutPlan, Paper, TagSpec } from "../layout/types";
 import { composePage } from "./compose";
-import { drawBackPage } from "./pdf-pages";
+import { drawAlignmentBackPage, drawBackPage, drawCalibrationPage } from "./pdf-pages";
 import type {
   BitGridOpts,
   Canvas,
@@ -136,6 +136,93 @@ function buildPlan(
   }
   return plan;
 }
+
+// The calibration / alignment sheet is always A4, independent of the
+// layout paper.
+const A4: Paper = { width_mm: 210, height_mm: 297 };
+const ALIGN_SIZES = [10, 25, 50];
+
+describe("drawCalibrationPage — duplex targets", () => {
+  // Stroked, unfilled rects whose side is one of the reference sizes are
+  // the square target outlines (the 100 mm square and the page border are
+  // excluded by size).
+  const targetSquares = (calls: Call[]): RectOpts[] =>
+    labelBoxes(calls).filter((r) => ALIGN_SIZES.includes(Math.round(r.width_mm)));
+
+  it("draws no reference targets in single-sided mode", () => {
+    const { canvas, calls } = recordingCanvas(A4.width_mm, A4.height_mm);
+    drawCalibrationPage(canvas);
+    expect(targetSquares(calls).length).toBe(0);
+    expect(circleCalls(calls).length).toBe(0);
+  });
+
+  it("draws three square target outlines in duplex square mode", () => {
+    const { canvas, calls } = recordingCanvas(A4.width_mm, A4.height_mm);
+    drawCalibrationPage(canvas, { isCircular: false });
+    const sizes = targetSquares(calls).map((r) => Math.round(r.width_mm)).sort((a, b) => a - b);
+    expect(sizes).toEqual([10, 25, 50]);
+  });
+
+  it("draws three circle target outlines in duplex circle mode", () => {
+    const { canvas, calls } = recordingCanvas(A4.width_mm, A4.height_mm);
+    drawCalibrationPage(canvas, { isCircular: true });
+    const diameters = circleCalls(calls)
+      .map((c) => Math.round(c.radius_mm * 2))
+      .sort((a, b) => a - b);
+    expect(diameters).toEqual([10, 25, 50]);
+    expect(targetSquares(calls).length).toBe(0);
+  });
+
+  it("vertically centres the 100 mm square in duplex mode", () => {
+    const { canvas, calls } = recordingCanvas(A4.width_mm, A4.height_mm);
+    drawCalibrationPage(canvas, { isCircular: false });
+    const main = labelBoxes(calls).find((r) => Math.round(r.width_mm) === 100);
+    expect(main).toBeDefined();
+    // (297 − 100) / 2 = 98.5
+    expect(main!.y_mm).toBeCloseTo(98.5, 6);
+  });
+});
+
+describe("drawAlignmentBackPage", () => {
+  for (const isCircular of [false, true]) {
+    it(`sample boxes are mirrored and contained (${isCircular ? "circle" : "square"})`, () => {
+      const { canvas, calls } = recordingCanvas(A4.width_mm, A4.height_mm);
+      drawAlignmentBackPage(canvas, { isCircular });
+      const W = A4.width_mm;
+
+      // Front target centres (same table the front draws), as the back
+      // sees them: x mirrored, y unchanged.
+      const expectedCenters = [
+        { size: 10, x: W - 160, y: 194 },
+        { size: 25, x: W - 160, y: 168.5 },
+        { size: 50, x: W - 160, y: 123 },
+      ];
+
+      const boxes = labelBoxes(calls);
+      expect(boxes.length).toBe(3);
+
+      for (const t of expectedCenters) {
+        const box = boxes.find(
+          (b) =>
+            Math.abs(b.x_mm + b.width_mm / 2 - t.x) < 1e-6 &&
+            Math.abs(b.y_mm + b.height_mm / 2 - t.y) < 1e-6,
+        );
+        expect(box, `no box centred at (${t.x}, ${t.y})`).toBeDefined();
+        if (isCircular) {
+          const halfDiag = Math.hypot(box!.width_mm / 2, box!.height_mm / 2);
+          expect(halfDiag).toBeLessThanOrEqual(t.size / 2 + 1e-9);
+        } else {
+          expect(box!.width_mm).toBeLessThanOrEqual(t.size + 1e-9);
+          expect(box!.height_mm).toBeLessThanOrEqual(t.size + 1e-9);
+        }
+      }
+
+      // Every sample text line fits its target's outer extent.
+      const texts = textCalls(calls);
+      expect(texts.length).toBeGreaterThan(0);
+    });
+  }
+});
 
 describe("drawBackPage — front/back alignment", () => {
   const opts: LayoutOptions = { pageMargin_mm: 5, quietZone_mm: 5, cutMargin_mm: 2 };
