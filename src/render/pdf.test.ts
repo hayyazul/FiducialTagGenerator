@@ -82,8 +82,8 @@ describe("renderPlan", () => {
     expect(plan.pageCount).toBeGreaterThanOrEqual(2);
     const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
     const reloaded = await PDFDocument.load(bytes);
-    // 1 calibration + 2 × layout pages.
-    expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
+    // 1 calibration + 1 alignment + 2 × layout pages.
+    expect(reloaded.getPageCount()).toBe(2 + 2 * plan.pageCount);
   });
 
   it("does not insert back pages by default", async () => {
@@ -91,6 +91,14 @@ describe("renderPlan", () => {
     const bytes = await renderPlan(plan, fakeMarker);
     const reloaded = await PDFDocument.load(bytes);
     expect(reloaded.getPageCount()).toBe(1 + plan.pageCount);
+  });
+
+  it("yields an even page count for double-sided so duplex pairs align", async () => {
+    const plan = planSmallTagLayout(makeTags(30), 25, square100, minimalOpts);
+    expect(plan.pageCount).toBeGreaterThanOrEqual(2);
+    const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
+    const reloaded = await PDFDocument.load(bytes);
+    expect(reloaded.getPageCount() % 2).toBe(0);
   });
 
   it("renders a valid PDF with in-quiet-zone labels and no extra pages", async () => {
@@ -115,7 +123,7 @@ describe("renderPlan", () => {
     const plan = planSmallTagLayout(makeTags(4), 20, square100, minimalOpts, 20, circleShape);
     const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
     const reloaded = await PDFDocument.load(bytes);
-    expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
+    expect(reloaded.getPageCount()).toBe(2 + 2 * plan.pageCount);
   });
 
   it("renders a circle plan with in-quiet-zone labels (curved text)", async () => {
@@ -135,8 +143,8 @@ describe("renderPlan", () => {
     const plan = planSmallTagLayout(tags, 25, square100, minimalOpts);
     const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
     const reloaded = await PDFDocument.load(bytes);
-    // 1 calibration + N layout fronts + N layout backs.
-    expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
+    // 1 calibration + 1 alignment + N layout fronts + N layout backs.
+    expect(reloaded.getPageCount()).toBe(2 + 2 * plan.pageCount);
     // The placements survived in the order the caller provided them.
     expect(plan.placements.map((p) => p.tag.id)).toEqual([13, 0, 586, 200, 42]);
   });
@@ -151,7 +159,7 @@ describe("renderPlan", () => {
     plan.subtagLevels = [{ familyName: "tag36h11", tileSize_mm: 4, tagSize_mm: 3.2 }];
     const bytes = await renderPlan(plan, fakeMarker, { printLabelsOnBack: true });
     const reloaded = await PDFDocument.load(bytes);
-    expect(reloaded.getPageCount()).toBe(1 + 2 * plan.pageCount);
+    expect(reloaded.getPageCount()).toBe(2 + 2 * plan.pageCount);
   });
 
   it("produces a valid PDF with deeply nested subtags (3 levels)", async () => {
