@@ -21,7 +21,12 @@ import type { MarkerProvider } from "../families";
 import type { LayoutPlan } from "../layout/types";
 import { composePage } from "./compose";
 import { PdfCanvas, embedPdfFonts } from "./pdf-canvas";
-import { drawBackPage, drawCalibrationPage, drawPageFooter } from "./pdf-pages";
+import {
+  drawAlignmentBackPage,
+  drawBackPage,
+  drawCalibrationPage,
+  drawPageFooter,
+} from "./pdf-pages";
 
 const MM_TO_PT = 72 / 25.4;
 const mm = (v: number): number => v * MM_TO_PT;
@@ -52,9 +57,22 @@ export async function renderPlan(
 
   const fonts = await embedPdfFonts(doc);
 
+  // The alignment page is the physical back of the calibration sheet; it
+  // both restores even parity (so each front/back layout pair shares a
+  // sheet) and carries the duplex registration check. Only meaningful when
+  // there is at least one layout page to print double-sided.
+  const duplex = printBack && plan.pageCount > 0;
+  const isCircular = plan.cutCircles.length > 0;
+
   const calibrationPage = doc.addPage([mm(210), mm(297)]);
   const calibrationCanvas = new PdfCanvas(calibrationPage, fonts, 210, 297);
-  drawCalibrationPage(calibrationCanvas);
+  drawCalibrationPage(calibrationCanvas, duplex ? { isCircular } : undefined);
+
+  if (duplex) {
+    const alignmentPage = doc.addPage([mm(210), mm(297)]);
+    const alignmentCanvas = new PdfCanvas(alignmentPage, fonts, 210, 297);
+    drawAlignmentBackPage(alignmentCanvas, { isCircular });
+  }
 
   for (let p = 0; p < plan.pageCount; p++) {
     const layoutPage = doc.addPage([mm(plan.paper.width_mm), mm(plan.paper.height_mm)]);
