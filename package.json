@@ -1,5 +1,5 @@
 {
-  "name": "apriltag-pdf-generator",
+  "name": "apriltag-generator",
   "private": true,
   "version": "0.0.0",
   "description": "Free, open, browser-based AprilTag and ArUco marker generator. Print PDF tags for robotics, computer vision, and FRC. Supports recursive nested tags.",
@@ -16,11 +16,11 @@
     "frc",
     "limelight"
   ],
-  "homepage": "https://hayyazul.github.io/AprilTagPDFGenerator/",
+  "homepage": "https://hayyazul.github.io/apriltag-generator/",
   "author": "Ayyaz Hassan",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hayyazul/AprilTagPDFGenerator.git"
+    "url": "https://github.com/hayyazul/apriltag-generator.git"
   },
   "type": "module",
   "scripts": {
